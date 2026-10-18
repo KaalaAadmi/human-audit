@@ -28,7 +28,13 @@ export function BarcodeScannerModal({ visible, onClose, onFoodScanned }: Props) 
     setErrorMsg(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const food = await NutritionService.lookupBarcode(result.data);
+    let food: SearchFoodResult | null = null;
+    let failure: string | null = null;
+    try {
+      food = await NutritionService.lookupBarcode(result.data);
+    } catch (e) {
+      failure = (e as Error).message;
+    }
     setLoading(false);
 
     if (food) {
@@ -36,7 +42,7 @@ export function BarcodeScannerModal({ visible, onClose, onFoodScanned }: Props) 
       setScannedFood(food);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      setErrorMsg(`No product found for barcode ${result.data}`);
+      setErrorMsg(failure ?? `No product with nutrition data found for barcode ${result.data}`);
     }
   };
 

@@ -1,13 +1,17 @@
 # HumanAudit — App Flow & Navigation Architecture
 
-## 1. Directory & Routing Structure (Expo Router v3)
+## 1. Directory & Routing Structure (Expo Router ~57)
+
+> Status: the tree below is the implemented layout plus planned screens. Items marked **(not built)** are planned only. There is no local SQLite store; the app reads and writes through the Next.js API.
 
 ```
 app/
-├── _layout.tsx                     # Global Providers (Auth, Theme, SQLite, Sync)
-├── (auth)/
-│   ├── login.tsx                   # Supabase Auth Screen
-│   └── onboarding.tsx              # Biometrics, Login Date Baseline & Permissions
+├── _layout.tsx                     # Global Providers (Clerk, Theme, Biometric lock)
+├── onboarding.tsx                  # Biometrics, Login Date Baseline & Permissions
+├── auth/
+│   ├── _layout.tsx
+│   ├── login.tsx                   # Clerk sign-in
+│   └── register.tsx                # Clerk sign-up
 ├── (tabs)/
 │   ├── _layout.tsx                 # Custom Mellow Bottom Tab Bar (5 Tabs)
 │   ├── index.tsx                   # [Screen 1] Home Dashboard (Central Hub)
@@ -15,13 +19,13 @@ app/
 │   ├── diary.tsx                   # [Screen 3] Food Diary (Today Only)
 │   ├── activity.tsx                # [Screen 4] Workouts & HR Zones (1-5)
 │   └── settings.tsx                # [Screen 7] Settings, Deduplication & Connectors
-└── (modals)/
-    ├── sleep-detail.tsx            # [Screen 5] Deep-Dive Sleep Hypnogram & Vitals
-    ├── body-age-detail.tsx         # [Screen 6] 3D Luminous Bio-Orb & Trajectory
-    ├── barcode-scanner.tsx         # Barcode Camera Scanner (Open Food Facts)
-    ├── food-search.tsx             # USDA + OFF Search Modal
-    ├── recipe-builder.tsx          # Custom Food & Multi-Serving Recipe Creator
-    └── macro-goals-config.tsx      # Day-of-Week Custom Gram Targets (Mon-Sun)
+(no routed modals)                  # Modals are components in components/:
+                                    #   BarcodeScannerModal, PhotoMealModal, VoiceLogModal,
+                                    #   CustomFoodModal, RecipeBuilderModal
+                                    # Food search (Open Food Facts primary, USDA fallback) and
+                                    # macro goals live inside diary.tsx / settings.tsx.
+(not built) sleep-detail            # [Screen 5] Sleep Hypnogram & Vitals
+(not built) body-age-detail         # [Screen 6] Bio-Orb & Trajectory
 ```
 
 ---

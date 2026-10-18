@@ -7,27 +7,27 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#121316",
-      "splash": {
-        "image": "./assets/splash-icon.png",
-        "resizeMode": "contain",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121316"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.humanaudit.app",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "HumanAudit needs access to your sleep, workout, and heart rate data to calculate your Readiness and Heart Rate Zones.",
+        "NSHealthUpdateUsageDescription": "HumanAudit writes hydration logs to your health record.",
+        "NSCameraUsageDescription": "HumanAudit uses your camera to scan food barcodes and analyze meal photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#121316"
       },
-    "ios": {
-        "supportsTablet": false,
-        "bundleIdentifier": "com.humanaudit.app",
-        "infoPlist": {
-          "NSHealthShareUsageDescription": "HumanAudit needs access to your sleep, workout, and heart rate data to calculate your Readiness and Heart Rate Zones.",
-          "NSHealthUpdateUsageDescription": "HumanAudit writes hydration logs to your health record.",
-          "NSCameraUsageDescription": "HumanAudit uses your camera to scan food barcodes and analyze meal photos."
-        }
-      },
-      "android": {
-        "adaptiveIcon": {
-          "foregroundImage": "./assets/adaptive-icon.png",
-          "backgroundColor": "#121316"
-        },
-        "package": "com.humanaudit.app"
-      },
+      "package": "com.humanaudit.app"
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
@@ -35,10 +35,11 @@
       "expo-router",
       "expo-status-bar",
       "expo-secure-store",
-        "expo-camera"
+      "expo-camera",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
-        "typedRoutes": true
-      }
+      "typedRoutes": true
+    }
   }
 }

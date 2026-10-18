@@ -29,9 +29,9 @@ export function CustomFoodModal({ visible, onClose, onFoodCreated }: Props) {
     const newFood: SearchFoodResult = {
       id: `custom_${Date.now()}`,
       name: name.trim(),
-      brand: brand.trim() || 'Custom Recipe',
+      brand: brand.trim() || undefined,
       servingSize: servingSize.trim() || '1 serving',
-      servingGrams: 100,
+      servingGrams: parseFloat(servingSize) || 100, // e.g. "85g" -> 85
       calories: parseInt(calories, 10) || 0,
       proteinG: parseFloat(proteinG) || 0,
       carbsG: parseFloat(carbsG) || 0,

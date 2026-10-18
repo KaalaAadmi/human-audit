@@ -1,27 +1,37 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
 interface TabIconProps {
-  emoji: string;
-  name: string;
+  name: IoniconName;
+  label: string;
   focused: boolean;
-  color?: string;
+  activeColor: string;
 }
 
-function TabIcon({ emoji, name, focused, color = Colors.bioGreen }: TabIconProps) {
+function TabIcon({ name, label, focused, activeColor }: TabIconProps) {
+  const iconColor = focused ? activeColor : Colors.textMuted;
+
   return (
     <View style={styles.tabItem}>
-      <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.45 }}>{emoji}</Text>
+      <Ionicons name={name} size={19} color={iconColor} style={{ opacity: focused ? 1 : 0.6 }} />
       <Text
+        numberOfLines={1}
         style={[
           styles.tabLabel,
-          { color: focused ? color : Colors.textMuted, fontWeight: focused ? '700' : '500' },
+          {
+            color: iconColor,
+            fontWeight: focused ? '600' : '400',
+          },
         ]}
       >
-        {name}
+        {label}
       </Text>
+      {focused && <View style={[styles.activeIndicatorDot, { backgroundColor: activeColor }]} />}
     </View>
   );
 }
@@ -38,31 +48,66 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" name="Audit" focused={focused} color={Colors.bioGreen} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              name={focused ? 'pulse' : 'pulse-outline'}
+              label="Audit"
+              focused={focused}
+              activeColor={Colors.bioGreen}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="water"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💧" name="Water" focused={focused} color={Colors.hydration} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              name={focused ? 'water' : 'water-outline'}
+              label="Water"
+              focused={focused}
+              activeColor={Colors.hydration}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="diary"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🥗" name="Diary" focused={focused} color={Colors.bioGreen} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              name={focused ? 'restaurant' : 'restaurant-outline'}
+              label="Diary"
+              focused={focused}
+              activeColor={Colors.bioGreen}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" name="Vitals" focused={focused} color={Colors.bioAmber} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              name={focused ? 'flame' : 'flame-outline'}
+              label="Vitals"
+              focused={focused}
+              activeColor={Colors.bioAmber}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" name="System" focused={focused} color={Colors.textPure} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              name={focused ? 'options' : 'options-outline'}
+              label="System"
+              focused={focused}
+              activeColor={Colors.textPure}
+            />
+          ),
         }}
       />
     </Tabs>
@@ -81,10 +126,18 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 2,
+    width: 60,
   },
   tabLabel: {
-    fontSize: 10,
-    letterSpacing: 0.3,
+    fontSize: 9,
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  activeIndicatorDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    marginTop: 1,
   },
 });

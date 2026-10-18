@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View, Modal, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -17,17 +17,27 @@ interface Props {
 export function PhotoMealModal({ visible, onClose, onMealAnalyzed }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const camera = useRef<CameraView>(null);
   const [detectedPlate, setDetectedPlate] = useState<{ mealName: string; items: SearchFoodResult[] } | null>(null);
 
   const handleCaptureAndAnalyze = async () => {
     setLoading(true);
+    setError(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-    // Call vision analysis engine
-    const analysis = await NutritionService.analyzePhoto('simulated_base64_meal_photo');
-    setLoading(false);
-    setDetectedPlate(analysis);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const photo = await camera.current?.takePictureAsync({ base64: true, quality: 0.5 });
+      if (!photo?.base64) throw new Error('Could not capture a photo');
+      const analysis = await NutritionService.analyzePhoto(photo.base64);
+      if (analysis.items.length === 0) throw new Error('No food detected - try again with the plate centred');
+      setDetectedPlate(analysis);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      setError((e as Error).message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConfirmAdd = () => {
@@ -40,6 +50,7 @@ export function PhotoMealModal({ visible, onClose, onMealAnalyzed }: Props) {
 
   const handleReset = () => {
     setDetectedPlate(null);
+    setError(null);
     setLoading(false);
   };
 
@@ -74,7 +85,7 @@ export function PhotoMealModal({ visible, onClose, onMealAnalyzed }: Props) {
                   </View>
                 ) : (
                   <View style={styles.cameraBox}>
-                    <CameraView style={StyleSheet.absoluteFill} facing="back" />
+                    <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" />
                     <View style={styles.reticle}>
                       <Text style={[Typography.caption, { color: Colors.bioGreen, textAlign: 'center' }]}>
                         [ Center plate inside frame ]
@@ -83,6 +94,7 @@ export function PhotoMealModal({ visible, onClose, onMealAnalyzed }: Props) {
                   </View>
                 )}
 
+                {error && <Text style={[Typography.caption, { color: Colors.bioRose, marginTop: Spacing.sm }]}>{error}</Text>}
                 <Pressable
                   style={[styles.actionBtn, { marginTop: Spacing.md }, loading && { opacity: 0.6 }]}
                   disabled={loading}

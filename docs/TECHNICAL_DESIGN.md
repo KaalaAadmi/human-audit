@@ -1,5 +1,38 @@
 # HumanAudit — Technical Design Document & Mathematical Specification
 
+## 0. Unified Architecture & Backend API Layer
+
+```
+┌─────────────────────────────────┐
+│     Expo Mobile App (React Native)│
+│       • Clerk Auth (@clerk/expo)│
+│       • Biometric Privacy Lock  │
+│       • Local Offline Cache     │
+└────────────────┬────────────────┘
+                 │ HTTPS (Bearer Token)
+                 ▼
+┌─────────────────────────────────┐
+│     Next.js API Engine (apps/web) │
+│       • /api/profile (Profiles) │
+│       • /api/water (Hydration)  │
+│       • /api/foods (Nutrition)  │
+│       • /api/workouts (Sensors) │
+└────────────────┬────────────────┘
+                 │
+       ┌─────────┴─────────┐
+       ▼                   ▼
+┌──────────────┐   ┌───────────────────────┐
+│ Supabase DB  │   │ Oracle Cloud Free VM  │
+│ (PostgreSQL) │   │ (Zero Mobile Change)  │
+└──────────────┘   └───────────────────────┘
+```
+
+### 0.1 Backend API Specification
+* **Authentication Independence:** Mobile signs in with Clerk; backend APIs authenticate user requests and interface directly with database tables, eliminating client-side RLS permission blocks. The mobile app never talks to the database: it sends `Authorization: Bearer <Clerk session token>` to the Next.js API, which verifies it against Clerk's JWKS (`apps/web/lib/auth.ts`) and takes the user id from the token's `sub`, never from the request body. Supabase is used only as managed Postgres (pooler `DATABASE_URL`), so access control lives in the API; RLS is enabled with no policies as defence in depth against direct REST access.
+* **Database Agnosticism:** Database driver (`apps/web/lib/db.ts`) routes between PostgreSQL pool (Oracle Cloud VM via `DATABASE_URL`) and Supabase Admin client (`SUPABASE_SERVICE_ROLE_KEY`), enabling zero mobile refactoring when migrating.
+
+---
+
 ## 1. Mathematical Scoring Engines
 
 ### 1.1 Daily Strain / Workload Engine (0.0 – 21.0 Whoop Scale)

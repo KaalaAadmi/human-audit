@@ -1,5 +1,5 @@
 {
-  "id": "d5ca4edf-3b9f-4712-b566-0cb3c0a0ea21",
+  "id": "7c1e75cd-827b-4e58-94dc-9a8ff798af19",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -10,9 +10,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_id": {
           "name": "user_id",
@@ -72,10 +73,19 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "daily_macro_goals_user_id_day_of_week_unique": {
+          "name": "daily_macro_goals_user_id_day_of_week_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "day_of_week"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.daily_vitals_summary": {
       "name": "daily_vitals_summary",
@@ -83,9 +93,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_id": {
           "name": "user_id",
@@ -202,10 +213,19 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "daily_vitals_summary_user_id_summary_date_unique": {
+          "name": "daily_vitals_summary_user_id_summary_date_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "summary_date"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.food_logs": {
       "name": "food_logs",
@@ -213,9 +233,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_id": {
           "name": "user_id",
@@ -243,7 +264,7 @@
         },
         "serving_quantity": {
           "name": "serving_quantity",
-          "type": "numeric(5, 2)",
+          "type": "numeric(7, 2)",
           "primaryKey": false,
           "notNull": true
         },
@@ -261,19 +282,19 @@
         },
         "protein_g": {
           "name": "protein_g",
-          "type": "numeric(5, 2)",
+          "type": "numeric(7, 2)",
           "primaryKey": false,
           "notNull": true
         },
         "carbs_g": {
           "name": "carbs_g",
-          "type": "numeric(5, 2)",
+          "type": "numeric(7, 2)",
           "primaryKey": false,
           "notNull": true
         },
         "fats_g": {
           "name": "fats_g",
-          "type": "numeric(5, 2)",
+          "type": "numeric(7, 2)",
           "primaryKey": false,
           "notNull": true
         },
@@ -311,7 +332,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.user_profiles": {
       "name": "user_profiles",
@@ -404,7 +425,7 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.water_logs": {
       "name": "water_logs",
@@ -412,9 +433,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_id": {
           "name": "user_id",
@@ -459,10 +481,19 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "water_logs_user_id_log_date_unique": {
+          "name": "water_logs_user_id_log_date_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "log_date"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.wearable_settings": {
       "name": "wearable_settings",
@@ -544,7 +575,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.workout_logs": {
       "name": "workout_logs",
@@ -552,9 +583,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_id": {
           "name": "user_id",
@@ -686,7 +718,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     }
   },
   "enums": {},

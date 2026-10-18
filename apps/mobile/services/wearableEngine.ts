@@ -1,212 +1,197 @@
+export type WearableSource = 'fitbit' | 'apple_health' | 'google_health';
+export type Sex = 'male' | 'female' | 'prefer_not_to_say';
+
 export interface HeartRateSample {
-  timestamp: string;
+  timestamp: string; // ISO 8601
   bpm: number;
 }
 
+// ACSM %HRR zone boundaries (lower inclusive, upper exclusive except Z5)
+// Z1: 30–39%, Z2: 40–59%, Z3: 60–74%, Z4: 75–89%, Z5: ≥90%
+const ZONE_LOWER = [0.30, 0.40, 0.60, 0.75, 0.90] as const;
+
 export interface ZoneDurations {
-  zone1Sec: number; // 50-60% HRR
-  zone2Sec: number; // 60-70% HRR
-  zone3Sec: number; // 70-80% HRR
-  zone4Sec: number; // 80-90% HRR
-  zone5Sec: number; // 90-100% HRR
+  zone1Sec: number; // 30–39% HRR (Light)
+  zone2Sec: number; // 40–59% HRR (Moderate)
+  zone3Sec: number; // 60–74% HRR (Vigorous low)
+  zone4Sec: number; // 75–89% HRR (Vigorous high)
+  zone5Sec: number; // ≥90%  HRR (Near-maximal)
   totalSec: number;
 }
 
 export interface WorkoutRecord {
   id: string;
-  source: 'fitbit' | 'apple_health' | 'health_connect';
+  source: WearableSource;
   activityName: string;
-  startTime: string;
-  endTime: string;
+  startTime: string; // ISO 8601
+  endTime: string;   // ISO 8601
   durationMinutes: number;
   caloriesBurned: number;
   avgHeartRate: number;
   maxHeartRate: number;
-  strainScore: number; // 0.0 - 21.0
+  trimpRaw: number;  // Banister TRIMP (the validated quantity)
+  strainScore: number; // 0–21 cosmetic scale derived from TRIMP
   zones: ZoneDurations;
   isDeduplicated?: boolean;
 }
 
-export interface SleepTelemetry {
-  totalSleepMinutes: number;
-  sleepPerformancePct: number; // e.g. 88%
-  sleepNeedMinutes: number;
-  remMinutes: number;
-  deepMinutes: number;
-  lightMinutes: number;
-  awakeMinutes: number;
-  respiratoryRate: number;
-  restingHeartRate: number;
-  hrvMs: number;
-  skinTempDeviation: number; // e.g. -0.2 C
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Tanaka HRmax. Override with measured max once available. */
+export function hrMax(age: number, measuredMax?: number): number {
+  const tanaka = 208 - 0.7 * age;
+  return measuredMax && measuredMax > tanaka ? measuredMax : tanaka;
 }
+
+/** Classify a single HR reading into zone index 0–4 (-1 = below Z1). */
+function zoneIndex(bpm: number, hrRest: number, hrMax: number): number {
+  const pHRR = (bpm - hrRest) / (hrMax - hrRest);
+  for (let z = 4; z >= 0; z--) {
+    if (pHRR >= ZONE_LOWER[z]) return z;
+  }
+  return -1; // below 30% HRR — not counted
+}
+
+// ---------------------------------------------------------------------------
+// Banister TRIMP constants by sex
+// ponytail: prefer_not_to_say uses the mean of male/female constants — no published answer exists
+// ---------------------------------------------------------------------------
+const TRIMP_CONST: Record<Sex, { a: number; b: number }> = {
+  male:              { a: 0.64, b: 1.92 },
+  female:            { a: 0.86, b: 1.67 },
+  prefer_not_to_say: { a: 0.75, b: 1.795 },
+};
+
+/** Banister TRIMP for a single Δt window (minutes). */
+function trimpMinute(hrr: number, sex: Sex): number {
+  const { a, b } = TRIMP_CONST[sex];
+  return hrr * a * Math.exp(b * hrr);
+}
+
+// ---------------------------------------------------------------------------
+// Public engine
+// ---------------------------------------------------------------------------
 
 export const WearableEngine = {
   /**
-   * Calculates Karvonen HRR Zone thresholds and aggregates time spent in Zones 1-5
+   * Karvonen %HRR zones (ACSM cut-points) + Banister TRIMP from raw HR samples.
+   * Uses real timestamp deltas; caps gaps >300 s (5 min) to 0 to avoid inflating strain.
+   * ponytail: gap cap is a heuristic; tune if platform exports long-gap data legitimately
    */
-  calculateHRRZones(
+  calculateZonesAndTrimp(
     samples: HeartRateSample[],
-    age: number = 28,
-    restingHeartRate: number = 52
-  ): ZoneDurations {
-    const maxHeartRate = 220 - age;
-    const hrr = maxHeartRate - restingHeartRate;
+    age: number,
+    restingHeartRate: number,
+    sex: Sex,
+    measuredHrMax?: number,
+  ): { zones: ZoneDurations; trimpRaw: number } {
+    const maxHR  = hrMax(age, measuredHrMax);
+    const hrr    = maxHR - restingHeartRate;
 
-    // Thresholds
-    const z1Min = restingHeartRate + 0.50 * hrr;
-    const z2Min = restingHeartRate + 0.60 * hrr;
-    const z3Min = restingHeartRate + 0.70 * hrr;
-    const z4Min = restingHeartRate + 0.80 * hrr;
-    const z5Min = restingHeartRate + 0.90 * hrr;
+    const zones: ZoneDurations = { zone1Sec: 0, zone2Sec: 0, zone3Sec: 0, zone4Sec: 0, zone5Sec: 0, totalSec: 0 };
+    let trimp = 0;
 
-    let zone1Sec = 0;
-    let zone2Sec = 0;
-    let zone3Sec = 0;
-    let zone4Sec = 0;
-    let zone5Sec = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const bpm = samples[i].bpm;
+      const dtMs = i === 0
+        ? 0
+        : new Date(samples[i].timestamp).getTime() - new Date(samples[i - 1].timestamp).getTime();
+      const dtSec = Math.min(dtMs / 1000, 300); // cap gaps at 5 min
+      if (dtSec <= 0) continue;
 
-    // Assuming 5-second interval between HR samples if not specified
-    const sampleIntervalSec = 5;
+      const z = zoneIndex(bpm, restingHeartRate, maxHR);
+      if (z >= 0) {
+        const key = (['zone1Sec', 'zone2Sec', 'zone3Sec', 'zone4Sec', 'zone5Sec'] as const)[z];
+        zones[key] += dtSec;
+        zones.totalSec += dtSec;
+      }
 
-    for (const sample of samples) {
-      const bpm = sample.bpm;
-      if (bpm >= z5Min) {
-        zone5Sec += sampleIntervalSec;
-      } else if (bpm >= z4Min) {
-        zone4Sec += sampleIntervalSec;
-      } else if (bpm >= z3Min) {
-        zone3Sec += sampleIntervalSec;
-      } else if (bpm >= z2Min) {
-        zone2Sec += sampleIntervalSec;
-      } else if (bpm >= z1Min) {
-        zone1Sec += sampleIntervalSec;
+      const pHRR = (bpm - restingHeartRate) / hrr;
+      if (pHRR >= 0.30) { // ignore sub-Z1 for TRIMP too
+        trimp += (dtSec / 60) * trimpMinute(pHRR, sex);
       }
     }
 
-    const totalSec = zone1Sec + zone2Sec + zone3Sec + zone4Sec + zone5Sec;
-
-    return {
-      zone1Sec,
-      zone2Sec,
-      zone3Sec,
-      zone4Sec,
-      zone5Sec,
-      totalSec,
-    };
+    return { zones, trimpRaw: Number(trimp.toFixed(2)) };
   },
 
   /**
-   * Calculates 0-21 Day Strain from Zone Durations
+   * 0–21 cosmetic Strain from Banister TRIMP.
+   * Formula: 21 × ln(1 + TRIMP) / ln(6287)   (ln(6287) ≈ 8.746)
+   * ponytail: the 0–21 scale isn't validated; TRIMP itself is the training-load metric
    */
-  calculateStrain(zones: ZoneDurations): number {
-    const rawWorkload =
-      (zones.zone1Sec / 60) * 0.02 +
-      (zones.zone2Sec / 60) * 0.05 +
-      (zones.zone3Sec / 60) * 0.12 +
-      (zones.zone4Sec / 60) * 0.28 +
-      (zones.zone5Sec / 60) * 0.65;
-
-    const k = 0.045;
-    const strain = 21 * (1 - Math.exp(-k * rawWorkload));
-    return Number(Math.min(21.0, Math.max(0.0, strain)).toFixed(1));
+  trimpToStrain(trimpRaw: number): number {
+    const raw = 21 * Math.log(1 + trimpRaw) / Math.log(6287);
+    return Number(Math.min(21.0, Math.max(0.0, raw)).toFixed(1));
   },
 
   /**
-   * Smart Deduplication: Prioritizes Fitbit > Apple Health > Health Connect
-   * Discards data prior to firstLoginDate
+   * Deduplicates workouts using the user's saved source priority order.
+   * Rule: ≥50% overlap of either workout's duration → keep higher-priority source.
+   * Same-priority tie → keep the existing (earlier-added) record.
+   * Discards records before firstLoginDate.
+   * ponytail: O(n²) scan — fine for typical wearable sync volumes (<200 workouts/day)
    */
   deduplicateWorkouts(
-    incomingWorkouts: WorkoutRecord[],
+    incoming: WorkoutRecord[],
     firstLoginDate: Date,
-    sourcePriority: ('fitbit' | 'apple_health' | 'health_connect')[] = ['fitbit', 'apple_health', 'health_connect']
+    sourcePriority: WearableSource[] = ['fitbit', 'apple_health', 'google_health'],
   ): WorkoutRecord[] {
-    // 1. Filter out historical records prior to first login baseline
-    const filtered = incomingWorkouts.filter(w => new Date(w.startTime) >= firstLoginDate);
-
-    // 2. Sort by startTime
+    const filtered = incoming.filter(w => new Date(w.startTime) >= firstLoginDate);
     filtered.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     const result: WorkoutRecord[] = [];
 
-    for (const current of filtered) {
-      let isDuplicate = false;
+    for (const cur of filtered) {
+      let absorbed = false;
+      const curStart = new Date(cur.startTime).getTime();
+      const curEnd   = new Date(cur.endTime).getTime();
+      const curDur   = curEnd - curStart;
 
       for (let i = 0; i < result.length; i++) {
-        const existing = result[i];
+        const ex = result[i];
+        const exStart = new Date(ex.startTime).getTime();
+        const exEnd   = new Date(ex.endTime).getTime();
+        const exDur   = exEnd - exStart;
 
-        const curStart = new Date(current.startTime).getTime();
-        const curEnd = new Date(current.endTime).getTime();
-        const exStart = new Date(existing.startTime).getTime();
-        const exEnd = new Date(existing.endTime).getTime();
+        const overlapMs = Math.max(0, Math.min(curEnd, exEnd) - Math.max(curStart, exStart));
+        if (overlapMs / curDur < 0.5 && overlapMs / exDur < 0.5) continue;
 
-        const overlapStart = Math.max(curStart, exStart);
-        const overlapEnd = Math.min(curEnd, exEnd);
-        const overlapDuration = Math.max(0, overlapEnd - overlapStart);
-
-        const curDuration = curEnd - curStart;
-        const exDuration = exEnd - exStart;
-
-        // Check 50% overlap conflict
-        if (overlapDuration / curDuration >= 0.5 || overlapDuration / exDuration >= 0.5) {
-          const curPrio = sourcePriority.indexOf(current.source);
-          const exPrio = sourcePriority.indexOf(existing.source);
-
-          if (curPrio < exPrio) {
-            // Current has higher priority, replace existing
-            result[i] = current;
-            isDuplicate = true;
-            break;
-          } else {
-            // Existing has higher or equal priority, drop current
-            isDuplicate = true;
-            break;
-          }
+        // Conflict: keep higher priority (lower index). Tie → keep existing.
+        const curPrio = sourcePriority.indexOf(cur.source);
+        const exPrio  = sourcePriority.indexOf(ex.source);
+        if (curPrio !== -1 && (exPrio === -1 || curPrio < exPrio)) {
+          result[i] = cur; // replace with higher-priority record
         }
+        absorbed = true;
+        break;
       }
 
-      if (!isDuplicate) {
-        result.push(current);
-      }
+      if (!absorbed) result.push(cur);
     }
 
     return result;
   },
-
-  /**
-   * Calculates Biological Body Age from biometrics
-   */
-  calculateBiologicalAge(
-    chronologicalAge: number,
-    rhr: number, // e.g. 52
-    hrv: number, // e.g. 68
-    sleepPerfPct: number, // e.g. 88
-    weeklyStrain: number // e.g. 14.2
-  ): { biologicalAge: number; deltaYears: number; rejuvenationPace: string } {
-    let delta = 0;
-
-    // RHR Impact: baseline 65 bpm
-    delta += (rhr - 65) * 0.15;
-
-    // HRV Impact: baseline 45 ms
-    delta -= (hrv - 45) * 0.12;
-
-    // Sleep Performance Impact: baseline 75%
-    delta -= (sleepPerfPct - 75) * 0.08;
-
-    // Weekly Strain optimal zone (12-16)
-    if (weeklyStrain >= 12 && weeklyStrain <= 16) {
-      delta -= 1.2;
-    }
-
-    const bioAge = Number((chronologicalAge + delta).toFixed(1));
-    const deltaYears = Number((bioAge - chronologicalAge).toFixed(1));
-    const rejuvenationPace = deltaYears < 0 ? 'Aging 18% Slower than Baseline' : 'Optimal Adaptation Window';
-
-    return {
-      biologicalAge: bioAge,
-      deltaYears,
-      rejuvenationPace,
-    };
-  }
 };
+
+// ---------------------------------------------------------------------------
+// Runnable check (node services/wearableEngine.ts)
+// ---------------------------------------------------------------------------
+// @ts-ignore – Node-only check; stripped by the bundler at runtime
+if (typeof require !== 'undefined' && require.main === module) {
+  const samples: HeartRateSample[] = [
+    { timestamp: '2024-01-01T08:00:00Z', bpm: 130 },
+    { timestamp: '2024-01-01T08:01:00Z', bpm: 155 },
+    { timestamp: '2024-01-01T08:02:00Z', bpm: 170 },
+  ];
+  const { zones, trimpRaw } = WearableEngine.calculateZonesAndTrimp(samples, 30, 55, 'male');
+  const strain = WearableEngine.trimpToStrain(trimpRaw);
+  console.log('zones:', zones, 'trimp:', trimpRaw, 'strain:', strain);
+  // 30yo male, HRmax=187, HRR=132; 130bpm≈57%HRR→Z2, 155≈76%→Z4, 170≈87%→Z4
+  if (zones.zone4Sec === 0) throw new Error('zone4 should have time');
+  if (trimpRaw <= 0) throw new Error('TRIMP should be positive');
+  if (strain < 0 || strain > 21) throw new Error('strain out of range');
+  console.log('wearableEngine check: OK');
+}

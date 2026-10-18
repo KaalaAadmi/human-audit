@@ -8,7 +8,6 @@ dotenv.config({ path: path.resolve(__dirname, ".env") });
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set in packages/db/.env");
 }
-console.log(process.env.DATABASE_URL)
 export default defineConfig({
   schema: "./src/schemas.ts",
   out: "./drizzle",

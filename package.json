@@ -6,7 +6,7 @@
         "packages/*"
     ],
     "scripts": {
-        "mobile":"npm runstart --workspace=apps/mobile",
+        "mobile":"npm run start --workspace=apps/mobile",
         "web":"npm run dev --workspace=apps/web",
         "build":"turbo run build",
         "lint":"turbo run lint"

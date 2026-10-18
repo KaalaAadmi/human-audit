@@ -1,17 +1,29 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Switch } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Platform, StyleSheet, Text, View, ScrollView, Pressable, TextInput, Switch, TouchableOpacity, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
+import { useRouter } from 'expo-router';
+import { useAuth, useUser } from '@clerk/expo';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { CustomFoodModal } from '../../components/CustomFoodModal';
 import { RecipeBuilderModal, CustomRecipe } from '../../components/RecipeBuilderModal';
-import { MealTemplateModal, SavedMealTemplate } from '../../components/MealTemplateModal';
 import { SearchFoodResult } from '../../services/nutritionService';
+import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
+import { NativeHealthBridge } from '../../services/nativeHealthBridge';
+import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-type LibraryTab = 'foods' | 'recipes' | 'meals';
+type LibraryTab = 'foods' | 'recipes';
+
+const SOURCE_LABEL: Record<string, string> = {
+  fitbit: 'Fitbit (Sense / Charge)',
+  apple_health: 'Apple HealthKit (Watch Series / Ultra)',
+  google_health: 'Google Health Connect (Pixel Watch / Wear OS)',
+};
 
 interface DayGoal {
   calories: number;
@@ -21,110 +33,84 @@ interface DayGoal {
 }
 
 export default function SettingsScreen() {
-  // Wearable Priority State
-  const [priorities, setPriorities] = useState<string[]>([
-    'Fitbit (Sense / Charge)',
-    'Apple HealthKit (Watch Series / Ultra)',
-    'Google Health Connect (Pixel Watch / Wear OS)',
-  ]);
+  // Server-backed state (loaded on mount; null/empty until then)
+  const [profile, setProfile] = useState<any>(null);
+  const [vitals, setVitals] = useState<any>(null);
+  const [wearables, setWearables] = useState<WearableSettings>(DEFAULT_WEARABLES);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const priorities = [wearables.priority1, wearables.priority2, wearables.priority3];
 
   // Day of Week Macro Goals State
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('mon');
   const [goalsSavedNotification, setGoalsSavedNotification] = useState(false);
   const [dayGoals, setDayGoals] = useState<Record<DayOfWeek, DayGoal>>({
-    mon: { calories: 2500, proteinG: 210, carbsG: 260, fatG: 65 },
-    tue: { calories: 2400, proteinG: 200, carbsG: 240, fatG: 65 },
-    wed: { calories: 2500, proteinG: 210, carbsG: 260, fatG: 65 },
-    thu: { calories: 2200, proteinG: 200, carbsG: 180, fatG: 70 }, // Rest / Low Carb day
-    fri: { calories: 2600, proteinG: 210, carbsG: 280, fatG: 65 },
-    sat: { calories: 2600, proteinG: 210, carbsG: 280, fatG: 65 },
-    sun: { calories: 2200, proteinG: 200, carbsG: 180, fatG: 70 }, // Rest day
+    mon: DEFAULT_GOALS, tue: DEFAULT_GOALS, wed: DEFAULT_GOALS, thu: DEFAULT_GOALS, fri: DEFAULT_GOALS, sat: DEFAULT_GOALS, sun: DEFAULT_GOALS,
   });
 
   // Nutrition Library State
   const [activeLibTab, setActiveLibTab] = useState<LibraryTab>('foods');
   const [showAddFoodModal, setShowAddFoodModal] = useState(false);
   const [showAddRecipeModal, setShowAddRecipeModal] = useState(false);
-  const [showAddMealModal, setShowAddMealModal] = useState(false);
+  const [customFoods, setCustomFoods] = useState<SearchFoodResult[]>([]);
+  const [customRecipes, setCustomRecipes] = useState<CustomRecipe[]>([]);
 
-  // Custom Foods List
-  const [customFoods, setCustomFoods] = useState<SearchFoodResult[]>([
-    {
-      id: 'cf_1',
-      name: "Grandma's Grass-Fed Meatloaf",
-      brand: 'Homemade',
-      servingSize: '1 slice (120g)',
-      servingGrams: 120,
-      calories: 240,
-      proteinG: 26,
-      carbsG: 6,
-      fatG: 12,
-      source: 'custom',
-    },
-    {
-      id: 'cf_2',
-      name: 'High-Protein Banana Oat Muffin',
-      brand: 'Home Bakery',
-      servingSize: '1 muffin (85g)',
-      servingGrams: 85,
-      calories: 195,
-      proteinG: 14,
-      carbsG: 24,
-      fatG: 4.5,
-      source: 'custom',
-    },
-  ]);
+  const fail = (what: string) => (e: unknown) => Alert.alert(what, (e as Error).message);
 
-  // Custom Recipes List
-  const [customRecipes, setCustomRecipes] = useState<CustomRecipe[]>([
-    {
-      id: 'cr_1',
-      name: 'Weekly Meal Prep Chicken Rice Bowl',
-      servingsCount: 4,
-      ingredients: [
-        { id: 'i1', name: 'Chicken Breast', grams: 800, calories: 960, proteinG: 192, carbsG: 0, fatG: 19 },
-        { id: 'i2', name: 'Jasmine Rice', grams: 400, calories: 1400, proteinG: 28, carbsG: 320, fatG: 4 },
-        { id: 'i3', name: 'Avocado', grams: 200, calories: 320, proteinG: 4, carbsG: 17, fatG: 29 },
-      ],
-      perServingCalories: 670,
-      perServingProteinG: 56,
-      perServingCarbsG: 84.3,
-      perServingFatG: 13,
-      totalCalories: 2680,
-      totalProteinG: 224,
-      totalCarbsG: 337,
-      totalFatG: 52,
-    },
-  ]);
+  useEffect(() => {
+    // custom_foods / custom_recipes tables may not exist until migrations are applied — fetch them
+    // with a fallback so a missing table doesn't block the whole settings screen.
+    const safeFoods = SyncService.fetchCustomFoods().catch(() => [] as any[]);
+    const safeRecipes = SyncService.fetchCustomRecipes().catch(() => [] as any[]);
 
-  // Saved Meal Templates List
-  const [savedMeals, setSavedMeals] = useState<SavedMealTemplate[]>([
-    {
-      id: 'sm_1',
-      name: 'Post-Workout Fuel Combo',
-      category: 'lunch',
-      description: '200g Grilled Chicken + 1.5 cup Rice + 1 Hass Avocado',
-      calories: 698,
-      proteinG: 70,
-      carbsG: 76,
-      fatG: 15,
-    },
-    {
-      id: 'sm_2',
-      name: 'Anabolic Breakfast Stacker',
-      category: 'breakfast',
-      description: '4 Whole Eggs + 2 Slices Sourdough + 1 Scoop Whey Shake',
-      calories: 580,
-      proteinG: 58,
-      carbsG: 38,
-      fatG: 22,
-    },
-  ]);
+    Promise.all([
+      SyncService.fetchUserProfile(), SyncService.fetchVitals(), SyncService.fetchMacroGoals(), SyncService.fetchWearableSettings(),
+      safeFoods, safeRecipes,
+    ])
+      .then(([p, v, g, w, cf, cr]) => {
+        setProfile(p); setVitals(v); setWearables(w); setCustomFoods(cf); setCustomRecipes(cr);
+        // goals[] is indexed 0 = Sunday ... 6 = Saturday
+        setDayGoals({ sun: g[0], mon: g[1], tue: g[2], wed: g[3], thu: g[4], fri: g[5], sat: g[6] });
+      })
+      .catch(e => setLoadError((e as Error).message));
+  }, []);
 
-  // Smart Scale Toggles
-  const [scaleHume, setScaleHume] = useState(true);
-  const [scaleFittr, setScaleFittr] = useState(false);
-  const [scaleFitelo, setScaleFitelo] = useState(false);
+  const router = useRouter();
+  const { signOut } = useAuth();
+  const { user } = useUser();
+
+  // Biometrics & Security State
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+
+  useEffect(() => {
+    SecureStore.getItemAsync(BIOMETRICS_ENABLED_KEY).then(val => {
+      setBiometricsEnabled(val === 'true');
+    });
+  }, []);
+
+  const handleToggleBiometrics = async (val: boolean) => {
+    await Haptics.selectionAsync();
+    setBiometricsEnabled(val);
+    await SecureStore.setItemAsync(BIOMETRICS_ENABLED_KEY, val ? 'true' : 'false');
+  };
+
+  const handleSignOut = async () => {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    try {
+      if (signOut) {
+        await signOut();
+      }
+    } catch {
+      //
+    }
+    router.replace('/auth/login' as any);
+  };
+
+  const saveWearables = (patch: Partial<WearableSettings>) => {
+    Haptics.selectionAsync();
+    const prev = wearables;
+    setWearables({ ...prev, ...patch });
+    SyncService.saveWearableSettings(patch).catch(e => { setWearables(prev); fail('Could not save')(e); });
+  };
 
   const days: { key: DayOfWeek; label: string; full: string }[] = [
     { key: 'mon', label: 'Mon', full: 'Monday' },
@@ -138,12 +124,9 @@ export default function SettingsScreen() {
 
   const handleMovePriorityUp = (index: number) => {
     if (index === 0) return;
-    Haptics.selectionAsync();
-    const copy = [...priorities];
-    const temp = copy[index - 1];
-    copy[index - 1] = copy[index];
-    copy[index] = temp;
-    setPriorities(copy);
+    const p = [...priorities];
+    [p[index - 1], p[index]] = [p[index], p[index - 1]];
+    saveWearables({ priority1: p[0], priority2: p[1], priority3: p[2] });
   };
 
   const updateGoalField = (field: keyof DayGoal, value: string) => {
@@ -157,33 +140,40 @@ export default function SettingsScreen() {
     }));
   };
 
-  const handleCopyGoals = (target: 'weekdays' | 'weekend' | 'all') => {
+  const DAY_INDEX: Record<DayOfWeek, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const flashSaved = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const sourceGoal = dayGoals[selectedDay];
-    setDayGoals(prev => {
-      const next = { ...prev };
-      if (target === 'weekdays' || target === 'all') {
-        next.mon = { ...sourceGoal };
-        next.tue = { ...sourceGoal };
-        next.wed = { ...sourceGoal };
-        next.thu = { ...sourceGoal };
-        next.fri = { ...sourceGoal };
-      }
-      if (target === 'weekend' || target === 'all') {
-        next.sat = { ...sourceGoal };
-        next.sun = { ...sourceGoal };
-      }
-      return next;
-    });
     setGoalsSavedNotification(true);
     setTimeout(() => setGoalsSavedNotification(false), 2500);
+  };
+  const saveDays = (keys: DayOfWeek[], goal: DayGoal) =>
+    Promise.all(keys.map(k => SyncService.syncMacroGoals(DAY_INDEX[k], goal.calories, goal.proteinG, goal.carbsG, goal.fatG)))
+      .then(flashSaved)
+      .catch(fail('Could not save targets'));
+
+  const handleCopyGoals = (target: 'weekdays' | 'weekend' | 'all') => {
+    const goal = dayGoals[selectedDay];
+    const keys = (target === 'weekdays' ? ['mon', 'tue', 'wed', 'thu', 'fri'] : target === 'weekend' ? ['sat', 'sun'] : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) as DayOfWeek[];
+    setDayGoals(prev => ({ ...prev, ...Object.fromEntries(keys.map(k => [k, { ...goal }])) }));
+    saveDays(keys, goal);
   };
 
-  const handleSaveCurrentDayGoals = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setGoalsSavedNotification(true);
-    setTimeout(() => setGoalsSavedNotification(false), 2500);
-  };
+  const handleSaveCurrentDayGoals = () => saveDays([selectedDay], dayGoals[selectedDay]);
+
+  const handleDeleteAccount = () =>
+    Alert.alert('Delete account?', 'This permanently deletes all your data and your sign-in. It cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await SyncService.deleteAccountData();
+            await user?.delete();
+            router.replace('/auth/login' as any);
+          } catch (e) { fail('Could not delete account')(e); }
+        },
+      },
+    ]);
 
   // Macro Energy Calculations
   const currentGoal = dayGoals[selectedDay];
@@ -202,36 +192,49 @@ export default function SettingsScreen() {
         <Text style={[Typography.heroTitle, { marginBottom: Spacing.md }]}>Profile & Settings</Text>
 
         {/* User Summary Top Banner Card */}
+        {loadError && <Text style={[Typography.caption, { color: Colors.bioRose, marginBottom: Spacing.md }]}>Couldn't load your data: {loadError}</Text>}
         <GlassCard style={styles.profileCard}>
           <View style={styles.profileHeader}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>AB</Text>
+              <Text style={styles.avatarText}>{(profile?.display_name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w: string) => w[0].toUpperCase()).join('') || '?'}</Text>
             </View>
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
-              <Text style={Typography.cardTitle}>Arnav Bhattacharya</Text>
-              <Text style={Typography.caption}>Athlete Tier • Baseline: May 18, 2025</Text>
+              <Text style={Typography.cardTitle}>{profile?.display_name ?? user?.primaryEmailAddress?.emailAddress ?? '--'}</Text>
+              <Text style={Typography.caption}>
+                {profile ? `Baseline: ${new Date(profile.sync_start_timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : ' '}
+              </Text>
             </View>
             <View style={styles.bioAgePill}>
-              <Text style={[Typography.caption, { color: Colors.bioGreen, fontWeight: '700' }]}>BIO AGE: 24.8</Text>
+              <Text style={[Typography.caption, { color: Colors.bioGreen, fontWeight: '700' }]}>
+                BIO AGE: {vitals?.fitness_age ?? vitals?.body_age ? Number(vitals.fitness_age ?? vitals.body_age).toFixed(1) : '--'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.biometricsRow}>
             <View style={styles.biometricItem}>
               <Text style={Typography.caption}>CHRONO AGE</Text>
-              <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>28.0 yrs</Text>
+              <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>
+                {profile?.chronological_birthdate ? `${((Date.now() - new Date(profile.chronological_birthdate).getTime()) / 31557600000).toFixed(1)} yrs` : '--'}
+              </Text>
             </View>
             <View style={styles.biometricItem}>
-              <Text style={Typography.caption}>WEIGHT (HUME)</Text>
-              <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>76.4 kg</Text>
+              <Text style={Typography.caption}>WEIGHT</Text>
+              <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>
+                {vitals?.scale_weight_kg
+                  ? `${Number(vitals.scale_weight_kg).toFixed(1)} kg`
+                  : profile?.weight_kg
+                  ? `${Number(profile.weight_kg).toFixed(1)} kg`
+                  : '--'}
+              </Text>
             </View>
             <View style={styles.biometricItem}>
-              <Text style={Typography.caption}>BODY FAT</Text>
-              <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>13.8%</Text>
+              <Text style={Typography.caption}>HEIGHT</Text>
+              <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{profile?.height_cm ? `${Number(profile.height_cm)} cm` : '--'}</Text>
             </View>
             <View style={styles.biometricItem}>
               <Text style={Typography.caption}>RESTING HR</Text>
-              <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>52 bpm</Text>
+              <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{vitals?.resting_heart_rate ? `${vitals.resting_heart_rate} bpm` : '--'}</Text>
             </View>
           </View>
         </GlassCard>
@@ -378,17 +381,6 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
 
-            <Pressable
-              style={[styles.libTab, activeLibTab === 'meals' && styles.libTabActive]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setActiveLibTab('meals');
-              }}
-            >
-              <Text style={[styles.libTabText, activeLibTab === 'meals' && styles.libTabTextActive]}>
-                Saved Meals ({savedMeals.length})
-              </Text>
-            </Pressable>
           </View>
 
           {/* Tab 1: Custom Foods */}
@@ -426,6 +418,7 @@ export default function SettingsScreen() {
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         setCustomFoods(prev => prev.filter(f => f.id !== food.id));
+                        SyncService.deleteCustomFood(food.id).catch(fail('Could not delete'));
                       }}
                       hitSlop={10}
                     >
@@ -474,6 +467,7 @@ export default function SettingsScreen() {
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         setCustomRecipes(prev => prev.filter(r => r.id !== recipe.id));
+                        SyncService.deleteCustomRecipe(recipe.id).catch(fail('Could not delete'));
                       }}
                       hitSlop={10}
                     >
@@ -485,58 +479,6 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* Tab 3: Saved Meal Templates */}
-          {activeLibTab === 'meals' && (
-            <View style={{ marginTop: Spacing.md }}>
-              <View style={styles.libActionHeader}>
-                <Text style={Typography.statLabel}>SAVED MEAL COMBOS</Text>
-                <Pressable
-                  style={styles.addLibBtn}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setShowAddMealModal(true);
-                  }}
-                >
-                  <Text style={styles.addLibBtnText}>+ Save Meal</Text>
-                </Pressable>
-              </View>
-
-              {savedMeals.map(meal => (
-                <GlassCard key={meal.id} style={styles.libItemCard}>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[Typography.bodyText, { fontWeight: '700' }]}>{meal.name}</Text>
-                      <View style={styles.mealCatBadge}>
-                        <Text style={[Typography.caption, { fontSize: 10, color: Colors.bioGreen, fontWeight: '700' }]}>
-                          {meal.category.toUpperCase()}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[Typography.caption, { marginTop: 2 }]} numberOfLines={1}>{meal.description}</Text>
-                    <View style={styles.itemMacroRow}>
-                      <Text style={[Typography.caption, { color: Colors.bioGreen }]}>P: {meal.proteinG}g</Text>
-                      <Text style={[Typography.caption, { color: Colors.bioAmber }]}>C: {meal.carbsG}g</Text>
-                      <Text style={[Typography.caption, { color: Colors.bioRose }]}>F: {meal.fatG}g</Text>
-                    </View>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                    <Text style={[Typography.bodyMono, { color: Colors.textPure, fontWeight: '700' }]}>
-                      {meal.calories} kcal
-                    </Text>
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setSavedMeals(prev => prev.filter(m => m.id !== meal.id));
-                      }}
-                      hitSlop={10}
-                    >
-                      <Text style={{ color: Colors.bioRose, fontSize: 12, marginTop: 4 }}>Delete</Text>
-                    </Pressable>
-                  </View>
-                </GlassCard>
-              ))}
-            </View>
-          )}
         </GlassCard>
 
         {/* Wearable Deduplication Priority Engine */}
@@ -551,7 +493,7 @@ export default function SettingsScreen() {
               <View style={styles.priorityNumberBadge}>
                 <Text style={styles.priorityNumberText}>{index + 1}</Text>
               </View>
-              <Text style={[Typography.bodyText, { flex: 1, fontWeight: '700' }]}>{item}</Text>
+              <Text style={[Typography.bodyText, { flex: 1, fontWeight: '700' }]}>{SOURCE_LABEL[item] ?? item}</Text>
               {index > 0 && (
                 <Pressable style={styles.moveBtn} onPress={() => handleMovePriorityUp(index)}>
                   <Text style={styles.moveBtnText}>▲ Up</Text>
@@ -560,7 +502,101 @@ export default function SettingsScreen() {
             </View>
           ))}
           <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: Spacing.sm }]}>
-            * Workouts with $\ge 50\%$ time overlap are resolved in favor of the higher-ranked device.
+            * Workouts with ≥50% time overlap are resolved in favor of the higher-ranked device.
+          </Text>
+        </GlassCard>
+
+        {/* Health Data Sources */}
+        <View style={styles.sectionHeader}>
+          <Text style={Typography.cardTitle}>Health Data Sources</Text>
+          <Text style={Typography.caption}>Connect Apple Health or Google Health to sync 14 days of telemetry</Text>
+        </View>
+
+        <GlassCard style={{ marginBottom: Spacing.xl }}>
+          {/* Apple Health */}
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: Spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="heart-circle-outline" size={18} color={Colors.bioRose} />
+                <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Apple Health</Text>
+                {wearables.appleHealthConnected && (
+                  <View style={styles.connectedBadge}>
+                    <Text style={styles.connectedBadgeText}>Connected</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={Typography.caption}>
+                {wearables.appleHealthConnected
+                  ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
+                  : 'Connect to sync 14 days of Apple Health telemetry'}
+              </Text>
+            </View>
+            <Switch
+              value={wearables.appleHealthConnected}
+              onValueChange={async (val) => {
+                await Haptics.selectionAsync();
+                if (val) {
+                  const granted = await NativeHealthBridge.requestPermissions('apple_health');
+                  if (granted) {
+                    saveWearables({ appleHealthConnected: true });
+                    await NativeHealthBridge.syncHealthTelemetry(14, 'apple_health');
+                    const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
+                    setProfile(p);
+                    setVitals(v);
+                    Alert.alert('Apple Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
+                  }
+                } else {
+                  saveWearables({ appleHealthConnected: false });
+                }
+              }}
+              trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioRose }}
+            />
+          </View>
+
+          <View style={{ height: 1, backgroundColor: Colors.borderMachined, marginVertical: Spacing.sm }} />
+
+          {/* Google Health Connect */}
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: Spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="pulse-outline" size={18} color={Colors.bioGreen} />
+                <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Google Health</Text>
+                {wearables.healthConnectConnected && (
+                  <View style={styles.connectedBadge}>
+                    <Text style={styles.connectedBadgeText}>Connected</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={Typography.caption}>
+                {wearables.healthConnectConnected
+                  ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
+                  : 'Connect to sync 14 days of Google Health telemetry'}
+              </Text>
+            </View>
+            <Switch
+              value={wearables.healthConnectConnected}
+              onValueChange={async (val) => {
+                await Haptics.selectionAsync();
+                if (val) {
+                  const granted = await NativeHealthBridge.requestPermissions('google_health');
+                  if (granted) {
+                    saveWearables({ healthConnectConnected: true });
+                    await NativeHealthBridge.syncHealthTelemetry(14, 'google_health');
+                    const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
+                    setProfile(p);
+                    setVitals(v);
+                    Alert.alert('Google Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
+                  }
+                } else {
+                  saveWearables({ healthConnectConnected: false });
+                }
+              }}
+              trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
+            />
+          </View>
+
+          <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: Spacing.sm }]}>
+            First connect syncs 14 days of history; after that, daily delta on app open.
           </Text>
         </GlassCard>
 
@@ -577,11 +613,8 @@ export default function SettingsScreen() {
               <Text style={Typography.caption}>Auto-sync weight, body fat %, muscle mass</Text>
             </View>
             <Switch
-              value={scaleHume}
-              onValueChange={v => {
-                Haptics.selectionAsync();
-                setScaleHume(v);
-              }}
+              value={wearables.humeScaleConnected}
+              onValueChange={v => saveWearables({ humeScaleConnected: v })}
               trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
             />
           </View>
@@ -592,11 +625,8 @@ export default function SettingsScreen() {
               <Text style={Typography.caption}>Bluetooth bioimpedance sync</Text>
             </View>
             <Switch
-              value={scaleFittr}
-              onValueChange={v => {
-                Haptics.selectionAsync();
-                setScaleFittr(v);
-              }}
+              value={wearables.fittrConnected}
+              onValueChange={v => saveWearables({ fittrConnected: v })}
               trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
             />
           </View>
@@ -607,12 +637,32 @@ export default function SettingsScreen() {
               <Text style={Typography.caption}>Webhook weight ingestion</Text>
             </View>
             <Switch
-              value={scaleFitelo}
-              onValueChange={v => {
-                Haptics.selectionAsync();
-                setScaleFitelo(v);
-              }}
+              value={wearables.fiteloConnected}
+              onValueChange={v => saveWearables({ fiteloConnected: v })}
               trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
+            />
+          </View>
+        </GlassCard>
+
+        {/* Security & Biometric Lock */}
+        <View style={styles.sectionHeader}>
+          <Text style={Typography.cardTitle}>Security & Privacy Shield</Text>
+          <Text style={Typography.caption}>Biometric authentication and app switcher masking</Text>
+        </View>
+
+        <GlassCard style={{ marginBottom: Spacing.xl }}>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: Spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="finger-print" size={16} color={Colors.hydration} />
+                <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Biometric Vault Lock</Text>
+              </View>
+              <Text style={Typography.caption}>Require Face ID / Touch ID when opening or resuming</Text>
+            </View>
+            <Switch
+              value={biometricsEnabled}
+              onValueChange={handleToggleBiometrics}
+              trackColor={{ false: Colors.surfaceHighlight, true: Colors.hydration }}
             />
           </View>
         </GlassCard>
@@ -621,27 +671,32 @@ export default function SettingsScreen() {
         <GlassCard style={styles.baselineCard}>
           <Text style={[Typography.statLabel, { color: Colors.bioGreen }]}>INGESTION BASELINE WINDOW</Text>
           <Text style={[Typography.bodyText, { marginTop: 4 }]}>
-            Historical health data prior to your first login date (May 18, 2025) is strictly discarded, keeping your
+            Historical health data prior to your first login date{profile ? ` (${new Date(profile.sync_start_timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })})` : ''} is strictly discarded, keeping your
             trends completely clean from past device errors.
           </Text>
         </GlassCard>
+
+        {/* Sign Out Action */}
+        <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+          <Ionicons name="log-out-outline" size={16} color={Colors.warning} />
+          <Text style={styles.signOutBtnText}>Sign Out of Athlete Vault</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.signOutBtn, { marginTop: Spacing.sm }]} onPress={handleDeleteAccount}>
+          <Ionicons name="trash-outline" size={16} color={Colors.bioRose} />
+          <Text style={[styles.signOutBtnText, { color: Colors.bioRose }]}>Delete account</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Auxiliary Builder Modals */}
       <CustomFoodModal
         visible={showAddFoodModal}
         onClose={() => setShowAddFoodModal(false)}
-        onFoodCreated={newFood => setCustomFoods(prev => [newFood, ...prev])}
+        onFoodCreated={food => SyncService.createCustomFood(food).then(saved => setCustomFoods(prev => [saved, ...prev])).catch(fail('Could not save food'))}
       />
       <RecipeBuilderModal
         visible={showAddRecipeModal}
         onClose={() => setShowAddRecipeModal(false)}
-        onRecipeSaved={newRecipe => setCustomRecipes(prev => [newRecipe, ...prev])}
-      />
-      <MealTemplateModal
-        visible={showAddMealModal}
-        onClose={() => setShowAddMealModal(false)}
-        onMealSaved={newMeal => setSavedMeals(prev => [newMeal, ...prev])}
+        onRecipeSaved={r => SyncService.createCustomRecipe(r).then(saved => setCustomRecipes(prev => [saved, ...prev])).catch(fail('Could not save recipe'))}
       />
     </View>
   );
@@ -879,8 +934,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  connectedBadge: {
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  connectedBadgeText: {
+    color: Colors.bioGreen,
+    fontSize: 10,
+    fontWeight: '700',
+  },
   baselineCard: {
     backgroundColor: 'rgba(52, 211, 153, 0.04)',
     borderColor: 'rgba(52, 211, 153, 0.2)',
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: Spacing.radiusButton,
+    backgroundColor: 'rgba(248, 113, 113, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.25)',
+  },
+  signOutBtnText: {
+    color: Colors.warning,
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

@@ -5,9 +5,37 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1792029798204,
-      "tag": "0000_blue_jean_grey",
+      "when": 1792113897756,
+      "tag": "0000_fixed_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792116367002,
+      "tag": "0001_common_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792200000000,
+      "tag": "0002_formula_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792286400000,
+      "tag": "0003_weight_kg",
+      "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792372800000,
+      "tag": "0004_health_connector_flags",
+      "breakpoints": false
     }
   ]
 }

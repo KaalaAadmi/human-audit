@@ -7,7 +7,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. User Profiles & Health Baselines
--- user_id is the unique identifier issued by Auth (e.g. Supabase Auth / Clerk)
+-- user_id is the unique identifier issued by Auth (e.g. Clerk)
 CREATE TABLE user_profiles (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
@@ -40,11 +40,11 @@ CREATE TABLE custom_foods (
   user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   brand TEXT,
-  serving_size_g NUMERIC(6,2) NOT NULL,
+  serving_size_g NUMERIC(7,2) NOT NULL,
   calories INTEGER NOT NULL,
-  protein_g NUMERIC(5,2) NOT NULL,
-  carbs_g NUMERIC(5,2) NOT NULL,
-  fats_g NUMERIC(5,2) NOT NULL,
+  protein_g NUMERIC(7,2) NOT NULL,
+  carbs_g NUMERIC(7,2) NOT NULL,
+  fats_g NUMERIC(7,2) NOT NULL,
   barcode TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -55,9 +55,9 @@ CREATE TABLE custom_recipes (
   name TEXT NOT NULL,
   total_servings INTEGER NOT NULL DEFAULT 1,
   total_calories INTEGER NOT NULL,
-  total_protein_g NUMERIC(6,2) NOT NULL,
-  total_carbs_g NUMERIC(6,2) NOT NULL,
-  total_fats_g NUMERIC(6,2) NOT NULL,
+  total_protein_g NUMERIC(7,2) NOT NULL,
+  total_carbs_g NUMERIC(7,2) NOT NULL,
+  total_fats_g NUMERIC(7,2) NOT NULL,
   ingredients_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -69,12 +69,12 @@ CREATE TABLE food_logs (
   log_date DATE NOT NULL,
   meal_type TEXT NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
   food_name TEXT NOT NULL,
-  serving_quantity NUMERIC(5,2) NOT NULL,
+  serving_quantity NUMERIC(7,2) NOT NULL,
   serving_unit TEXT NOT NULL,
   calories INTEGER NOT NULL,
-  protein_g NUMERIC(5,2) NOT NULL,
-  carbs_g NUMERIC(5,2) NOT NULL,
-  fats_g NUMERIC(5,2) NOT NULL,
+  protein_g NUMERIC(7,2) NOT NULL,
+  carbs_g NUMERIC(7,2) NOT NULL,
+  fats_g NUMERIC(7,2) NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('usda', 'off', 'custom_food', 'recipe', 'barcode', 'voice', 'photo_ai')),
   logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -84,8 +84,9 @@ CREATE TABLE water_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   log_date DATE NOT NULL,
-  amount_ml INTEGER NOT NULL,
-  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  amount_ml INTEGER NOT NULL, -- the day's TOTAL (one row per user per day, set not appended)
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, log_date)
 );
 
 -- 6. Workouts & Calculated HR Zones (1-5)
@@ -144,7 +145,9 @@ CREATE TABLE wearable_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Strict User Isolation Policies (Row-Level Security)
+-- User isolation is enforced by the Next.js API (verifies the Clerk token, filters by user_id).
+-- RLS is enabled with NO policies, so the Supabase REST/anon keys cannot read or write anything;
+-- the API connects with the privileged DATABASE_URL role, which bypasses RLS.
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_macro_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_foods ENABLE ROW LEVEL SECURITY;
@@ -154,24 +157,6 @@ ALTER TABLE water_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_vitals_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wearable_settings ENABLE ROW LEVEL SECURITY;
-
-CREATE OR REPLACE FUNCTION current_auth_user_id() RETURNS TEXT AS $$
-  SELECT coalesce(
-    nullif(current_setting('request.jwt.claims', true)::jsonb->>'sub', ''),
-    nullif(current_setting('request.jwt.claim.sub', true), ''),
-    nullif(auth.uid()::text, '')
-  );
-$$ LANGUAGE sql STABLE;
-
-CREATE POLICY "Users can only read and write their own profile" ON user_profiles FOR ALL USING (id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own macro goals" ON daily_macro_goals FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own custom foods" ON custom_foods FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own custom recipes" ON custom_recipes FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own food logs" ON food_logs FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own water logs" ON water_logs FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own workouts" ON workout_logs FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own vitals" ON daily_vitals_summary FOR ALL USING (user_id = current_auth_user_id());
-CREATE POLICY "Users can only read and write their own wearable settings" ON wearable_settings FOR ALL USING (user_id = current_auth_user_id());
 ```
 
 ---
@@ -198,5 +183,6 @@ Because standard PostgreSQL and Drizzle ORM are used throughout, migrating the d
 
 ---
 
-## 3. Local SQLite Schema (Offline-First via Drizzle ORM)
-Local SQLite tables mirror remote tables with local sync flags (`client_uuid`, `sync_status` = `'synced' | 'pending_insert' | 'pending_update' | 'pending_delete'`) and composite index on `(user_id, log_date)`.
+## 3. Local SQLite Schema (Planned, not implemented)
+The app currently has no local store; it talks to the Next.js API directly. If offline-first is added later, local tables would mirror remote tables with sync flags (`client_uuid`, `sync_status` = `'synced' | 'pending_insert' | 'pending_update' | 'pending_delete'`) and a composite index on `(user_id, log_date)`.
+

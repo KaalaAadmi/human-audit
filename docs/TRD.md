@@ -7,11 +7,11 @@
 │                        HumanAudit Mobile Client                        │
 │                   Expo React Native (iOS & Android)                    │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Auth Client: Supabase Auth / Clerk Expo SDK                            │
+│ Auth Client: Clerk Expo SDK (Supabase is Postgres only; the Next.js API verifies the Clerk token)                            │
 │ UI & Design: React Native Reanimated 3 + Skia (Bio-Orb & Trajectory)   │
-│ Navigation:  Expo Router v3 (File-based routing & Deep linking)        │
+│ Navigation:  Expo Router ~57 (File-based routing & Deep linking)       │
 │ Local State: Zustand / TanStack React Query                            │
-│ Local DB:    Expo SQLite (Offline-First cache & local logs)            │
+│ Local DB:    None yet (API-only; SQLite offline cache is planned)      │
 │ Health Sync: HealthKit Config Plugin (iOS) & Health Connect (Android)  │
 │ Hardware:    Expo Camera (Barcode), Expo AV (Voice), Expo Haptics      │
 └───────────────────▲────────────────────────────────▲───────────────────┘
@@ -72,6 +72,8 @@
 * Max Heart Rate: $HR_{\text{max}} = 208 - (0.7 \times \text{Age})$
 * Resting Heart Rate: $HR_{\text{rest}}$ (from overnight 7-day average)
 * **Zones:**
+> **TBD (owner to decide):** the exact zone boundaries are not final. PRD, TRD and UI_UX_DESIGN currently disagree (50–60 vs 50–59, and bpm cut-offs in the UI doc), and nothing below 50% HRR is bucketed. Do not treat the values below as final.
+
   * Zone 1 (Warmup): $50\% - 59\%$ HRR
   * Zone 2 (Easy Aerobic): $60\% - 69\%$ HRR
   * Zone 3 (Aerobic Threshold): $70\% - 79\%$ HRR

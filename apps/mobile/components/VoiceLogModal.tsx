@@ -16,6 +16,7 @@ interface Props {
 export function VoiceLogModal({ visible, onClose, onItemsParsed }: Props) {
   const [transcript, setTranscript] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [parsedItems, setParsedItems] = useState<SearchFoodResult[]>([]);
 
   const handleParse = async (textToParse?: string) => {
@@ -25,10 +26,18 @@ export function VoiceLogModal({ visible, onClose, onItemsParsed }: Props) {
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const items = await NutritionService.parseVoice(text);
-    setLoading(false);
-    setParsedItems(items);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setError(null);
+    try {
+      const items = await NutritionService.parseVoice(text);
+      if (items.length === 0) throw new Error('No food found in that description');
+      setParsedItems(items);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      setError((e as Error).message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConfirmAdd = () => {
@@ -42,6 +51,7 @@ export function VoiceLogModal({ visible, onClose, onItemsParsed }: Props) {
   const handleReset = () => {
     setTranscript('');
     setParsedItems([]);
+    setError(null);
     setLoading(false);
   };
 
@@ -93,6 +103,8 @@ export function VoiceLogModal({ visible, onClose, onItemsParsed }: Props) {
                 )}
               </Pressable>
             </View>
+
+            {error && <Text style={[Typography.caption, { color: Colors.bioRose, marginTop: Spacing.sm }]}>{error}</Text>}
 
             {/* Quick Presets */}
             {parsedItems.length === 0 && (

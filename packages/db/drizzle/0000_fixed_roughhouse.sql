@@ -1,15 +1,17 @@
 CREATE TABLE "daily_macro_goals" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
 	"day_of_week" integer NOT NULL,
 	"target_calories" integer DEFAULT 2300 NOT NULL,
 	"target_protein_g" integer DEFAULT 180 NOT NULL,
 	"target_carbs_g" integer DEFAULT 220 NOT NULL,
-	"target_fats_g" integer DEFAULT 65 NOT NULL
+	"target_fats_g" integer DEFAULT 65 NOT NULL,
+	CONSTRAINT "daily_macro_goals_user_id_day_of_week_unique" UNIQUE("user_id","day_of_week")
 );
 --> statement-breakpoint
+ALTER TABLE "daily_macro_goals" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "daily_vitals_summary" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
 	"summary_date" date NOT NULL,
 	"readiness_score" integer NOT NULL,
@@ -25,25 +27,28 @@ CREATE TABLE "daily_vitals_summary" (
 	"body_age" numeric(4, 2) NOT NULL,
 	"scale_weight_kg" numeric(5, 2),
 	"weight_source" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "daily_vitals_summary_user_id_summary_date_unique" UNIQUE("user_id","summary_date")
 );
 --> statement-breakpoint
+ALTER TABLE "daily_vitals_summary" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "food_logs" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
 	"log_date" date NOT NULL,
 	"meal_type" text NOT NULL,
 	"food_name" text NOT NULL,
-	"serving_quantity" numeric(5, 2) NOT NULL,
+	"serving_quantity" numeric(7, 2) NOT NULL,
 	"serving_unit" text NOT NULL,
 	"calories" integer NOT NULL,
-	"protein_g" numeric(5, 2) NOT NULL,
-	"carbs_g" numeric(5, 2) NOT NULL,
-	"fats_g" numeric(5, 2) NOT NULL,
+	"protein_g" numeric(7, 2) NOT NULL,
+	"carbs_g" numeric(7, 2) NOT NULL,
+	"fats_g" numeric(7, 2) NOT NULL,
 	"source" text NOT NULL,
 	"logged_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "food_logs" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "user_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
@@ -59,14 +64,17 @@ CREATE TABLE "user_profiles" (
 	CONSTRAINT "user_profiles_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
+ALTER TABLE "user_profiles" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "water_logs" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
 	"log_date" date NOT NULL,
 	"amount_ml" integer NOT NULL,
-	"logged_at" timestamp with time zone DEFAULT now() NOT NULL
+	"logged_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "water_logs_user_id_log_date_unique" UNIQUE("user_id","log_date")
 );
 --> statement-breakpoint
+ALTER TABLE "water_logs" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "wearable_settings" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"priority_1" text DEFAULT 'fitbit' NOT NULL,
@@ -78,8 +86,9 @@ CREATE TABLE "wearable_settings" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "wearable_settings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "workout_logs" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
 	"external_id" text,
 	"source" text NOT NULL,
@@ -99,6 +108,7 @@ CREATE TABLE "workout_logs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "workout_logs" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "daily_macro_goals" ADD CONSTRAINT "daily_macro_goals_user_id_user_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user_profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "daily_vitals_summary" ADD CONSTRAINT "daily_vitals_summary_user_id_user_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user_profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "food_logs" ADD CONSTRAINT "food_logs_user_id_user_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user_profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

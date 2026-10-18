@@ -15,7 +15,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-2">2. Data Isolation & Security</h2>
             <p>
-              All data stored in our cloud backend is encrypted in transit and at rest. Strict Row-Level Security (RLS) ensures only authenticated users can access their personal metrics.
+              All data stored in our cloud backend is encrypted in transit and at rest. Every request is authenticated with your Clerk session, and the server only ever reads and writes the signed-in user's own records.
             </p>
           </section>
           <section>

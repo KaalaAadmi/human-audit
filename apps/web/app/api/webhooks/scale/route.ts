@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 
 interface SmartScalePayload {
   provider: 'hume' | 'fittr' | 'fitelo';
@@ -12,18 +13,15 @@ interface SmartScalePayload {
   timestamp: string;
 }
 
+const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
 export async function POST(req: NextRequest) {
   try {
-    const signature = req.headers.get('x-smart-scale-signature');
-    const authHeader = req.headers.get('authorization');
-
-    // Authenticate webhook
-    const validSecret = process.env.SCALE_WEBHOOK_SECRET || 'dev_scale_secret';
-    if (authHeader !== `Bearer ${validSecret}` && signature !== validSecret) {
-      // In dev mode allow if no secret configured
-      if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json({ error: 'Unauthorized webhook call' }, { status: 401 });
-      }
+    // Fail closed in every environment: no configured secret => nothing is accepted.
+    const secret = process.env.SCALE_WEBHOOK_SECRET;
+    const given = req.headers.get('authorization')?.replace(/^Bearer /i, '') ?? req.headers.get('x-smart-scale-signature') ?? '';
+    if (!secret || !safeEqual(given, secret)) {
+      return NextResponse.json({ error: 'Unauthorized webhook call' }, { status: 401 });
     }
 
     const body: SmartScalePayload = await req.json();
@@ -33,6 +31,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Process & store scale telemetry
+    // ponytail: only logged for now - persisting to daily_vitals_summary lands with the scale connectors.
     const scaleRecord = {
       userId: body.userId,
       provider: body.provider || 'hume',

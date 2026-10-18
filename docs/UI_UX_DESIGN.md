@@ -104,11 +104,48 @@ The **Bio-Orb** is an organic physiological indicator inspired by [Thinking Orbs
 ### Screen 7: System Preferences & Priorities
 * **Profile Tile:** User baseline stats and active sync date.
 * **Wearable Ingestion Priority:** Drag-and-drop hierarchy (Default: 1st Fitbit, 2nd Apple Health / Google Connect).
+* **Security & Biometric Lock Toggle:** Switch to enable/disable Face ID / Touch ID authentication when opening or resuming the app.
 * **Hardware Connectors:** Hume Scale, FITTR, Fitelo, and Day-of-Week macro config.
 
 ---
 
-## 4. Next.js Web Landing Page UI/UX Specification
+## 4. Authentication, Onboarding & Biometric Privacy System
+
+### 4.1 Launch & Authentication Portal
+* **Splash Screen (`app/index.tsx` or Root):** Deep matte carbon canvas with glowing glacier aqua pulse icon (`#67E8F9`) and `HUMANAUDIT // BIOMETRIC OS` typography.
+* **Athlete Sign In (`app/auth/login.tsx`):**
+  * Smoked titanium card with email format validation and password visibility toggle.
+  * Primary action: `Sign In & Sync Vault` in glacier aqua (`#67E8F9`).
+  * Links: `Create Athlete ID →` and `Forgot Password`.
+  * Persists verified session into `expo-secure-store` and attaches queries to authenticated `auth.uid()`.
+* **Athlete Registration (`app/auth/register.tsx`):**
+  * Fields: Athlete Name/Handle, Email, Secure Password.
+  * Primary action: `Register & Continue →` in sage emerald (`#34D399`).
+  * Automatically provisions initial row in `user_profiles` with `id: auth.user.id` (valid UUID) and flags `onboarding_completed: false`.
+
+### 4.2 First-Time Biometric Baseline Onboarding (`app/onboarding.tsx`)
+> **First-Time Gating Rule:** Displayed strictly once upon initial registration. Returning athletes and existing sessions bypass onboarding straight to the main app dashboard.
+
+* **Step 1: Biological Profile**
+  * Inputs: Birth Year (chronological age calculation), Height (cm), Weight (kg).
+  * *Sensor Ingestion Notice:* Resting Heart Rate is strictly auto-ingested from Apple Watch / Fitbit sensors to eliminate manual drift.
+* **Step 2: Wearables & Native Health Connectors**
+  * Connectors for Apple HealthKit (`HealthKit`) and Google Health Connect (`Health Connect`).
+  * *Smart Deduplication Notice:* Workouts with $\ge 50\%$ time overlap are resolved in favor of the highest-ranked wearable device.
+* **Step 3: Daily Hydration Targets & Reminders**
+  * Target Selector: Preset chips (`2.5L`, `3.0L`, `3.5L`, `+ Custom`).
+  * *Dynamic Custom Input:* If a preset chip is selected, the custom field remains hidden; tapping `+ Custom` reveals the numeric milliliter input.
+  * Interval Push Reminders: Toggleable 90-minute reminder window (8:00 AM – 10:00 PM).
+  * Milestone reward: Confetti particle explosion overlay when hitting 100% of daily hydration.
+
+### 4.3 Biometric Vault Lock & Background Privacy Shield
+* **First-Login Biometric Opt-In Prompt:** A one-time modal appears immediately after initial login/onboarding completion: *"Enable Face ID / Biometric Lock for Quick Access?"*. Users can accept or defer to Settings.
+* **App Switcher Privacy Shield:** When the app is minimized or backgrounded, an opaque privacy shield (`🛡️ Privacy Shield Active`) masks all physiological numbers and records from being exposed in the iOS App Switcher / Android Recents.
+* **Biometric Resume Lock:** On resuming the app, `expo-local-authentication` prompts for Face ID, Touch ID, or device passcode to unlock the vault and lift the shield.
+
+---
+
+## 5. Next.js Web Landing Page UI/UX Specification
 
 * **Chassis & Depth:** Built with the same `#0C0D10` carbon background and `#14151B` smoked titanium cards.
 * **Hero Section:** Live interactive 3D bio-orb, sarcastic tagline *"Because your biological age is currently judging your life choices."*, and official App Store / Google Play download badges.

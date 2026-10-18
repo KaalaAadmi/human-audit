@@ -57,7 +57,7 @@
 
 ### 2.4 Screen 4: Activity & Workout HR Zones
 * **Workout Summary:** Workout type, start time, duration, active calories burned, average HR, and max HR.
-* **Zone 1–5 Heart Rate Breakdown:**
+* **Zone 1–5 Heart Rate Breakdown:** *(Zone boundaries are TBD: the owner will define them. The percentages below are placeholders.)*
   * Zone 1 (Warmup: $50-60\%$ HRR)
   * Zone 2 (Easy Aerobic: $60-70\%$ HRR)
   * Zone 3 (Aerobic Threshold: $70-80\%$ HRR)
@@ -93,6 +93,6 @@
 
 ## 3. Non-Functional Requirements
 * **Visual Aesthetic:** Whoop 4.0 mellow dark theme (`#121316` background, `#1C1E24` smoked titanium cards, low-contrast pastel bio-accents, Apple Human Interface Guidelines).
-* **Offline-First:** All food logs, water entries, and cached health metrics stored locally in SQLite; cloud sync occurs opportunistically.
+* **Offline-First (planned, not implemented):** food logs, water entries and cached health metrics would be stored locally in SQLite with opportunistic cloud sync. Currently the app is online-only via the Next.js API.
 * **Privacy & Security:** Health data encrypted at rest; no selling of biometric data.
 * **Performance:** Screen transitions under 16ms (60–120 FPS via React Native Reanimated); barcode scanner recognition under 200ms.

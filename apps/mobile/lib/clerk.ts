@@ -1,19 +1,27 @@
 import * as SecureStore from 'expo-secure-store';
 
+// AFTER_FIRST_UNLOCK: token survives background tasks once the user has unlocked
+// the device once after boot. Default WHEN_UNLOCKED throws KeyChainException in
+// background/cold-start contexts before the first interactive unlock.
+// ponytail: single global option, per-key granularity if needed later
+const TOKEN_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+
 export const tokenCache = {
   async getToken(key: string) {
     try {
-      const item = await SecureStore.getItemAsync(key);
-      return item;
+      return await SecureStore.getItemAsync(key, TOKEN_OPTIONS);
     } catch (error) {
       console.warn('SecureStore get item error: ', error);
-      await SecureStore.deleteItemAsync(key);
+      // Delete the inaccessible item so a fresh token can be stored next sign-in.
+      SecureStore.deleteItemAsync(key, TOKEN_OPTIONS).catch(() => null);
       return null;
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      return SecureStore.setItemAsync(key, value);
+      return SecureStore.setItemAsync(key, value, TOKEN_OPTIONS);
     } catch (err) {
       console.warn('SecureStore save item error: ', err);
       return;
@@ -21,7 +29,7 @@ export const tokenCache = {
   },
   async clearToken(key: string) {
     try {
-      return SecureStore.deleteItemAsync(key);
+      return SecureStore.deleteItemAsync(key, TOKEN_OPTIONS);
     } catch (err) {
       return;
     }

@@ -18,6 +18,7 @@ export function useToday(date?: string) {
   const [waterMl, setWaterMl] = useState(0);
   const [vitals, setVitals] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
 
   // Prevent concurrent fetches and infinite dependency loops
   const isFetchingRef = useRef(false);
@@ -66,7 +67,8 @@ export function useToday(date?: string) {
       setFoods(f ?? []);
       setWaterMl(Number(w?.amount_ml) || 0);
       setVitals(v ?? null);
-      setWorkouts(wo ?? []);
+      setWorkouts(wo?.today ?? []);
+      setRecentWorkouts(wo?.recent ?? []);
       setError(null);
     } catch (e) {
       const msg = (e as Error).message;
@@ -91,5 +93,5 @@ export function useToday(date?: string) {
     }, [date, refresh])
   );
 
-  return { loading, error, profile, goals, foods, setFoods, waterMl, vitals, workouts, refresh };
+  return { loading, error, profile, goals, foods, setFoods, waterMl, vitals, workouts, recentWorkouts, refresh };
 }

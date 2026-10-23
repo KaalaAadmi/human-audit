@@ -78,10 +78,16 @@ export default function HomeDashboard() {
         <View style={styles.miniOrb} />
         <View style={{ flex: 1 }}>
           <Text style={styles.widgetTitle}>
-            {sleepMin !== null ? `${Math.floor(sleepMin / 60)}h ${sleepMin % 60}m Asleep${bodyAge !== null ? ` • Body Age ${bodyAge.toFixed(1)}` : ''}` : 'No sleep data yet'}
+            {sleepMin !== null
+              ? `${Math.floor(sleepMin / 60)}h ${sleepMin % 60}m Asleep${bodyAge !== null ? ` • Body Age ${bodyAge.toFixed(1)}` : ''}`
+              : 'No sleep data yet'}
           </Text>
           <Text style={Typography.caption}>
-            {ageDelta !== null ? `${Math.abs(ageDelta).toFixed(1)} yrs ${ageDelta <= 0 ? 'younger' : 'older'} than your age` : 'Sleep and body age appear once a wearable syncs'}
+            {ageDelta !== null
+              ? `${Math.abs(ageDelta).toFixed(1)} yrs ${ageDelta <= 0 ? 'younger' : 'older'} than your age`
+              : sleepMin !== null
+              ? `Body age appears once vitals sync`
+              : 'Sleep and body age appear once a wearable syncs'}
           </Text>
         </View>
       </GlassCard>

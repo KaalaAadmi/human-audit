@@ -20,6 +20,7 @@ import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { isClerkConfigured } from '../../lib/clerk';
+import { SyncService } from '../../services/syncService';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -50,22 +51,31 @@ export default function LoginScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
-      // Step 1: set the identifier
-      const { error: createErr } = await signIn.create({ identifier: email.trim().toLowerCase() });
+      // Step 1: Initialize sign in with identifier
+      const { error: createErr } = await signIn.create({
+        identifier: email.trim().toLowerCase(),
+      });
       if (createErr) throw createErr;
 
-      // Step 2: submit the password
-      const { error: pwErr } = await signIn.password({ password });
-      if (pwErr) throw pwErr;
+      // Step 2: Authenticate password factor (or pass password directly if needs_first_factor)
+      let currentStatus = signIn.status;
+      if (currentStatus === 'needs_first_factor' || currentStatus === 'needs_client_trust') {
+        const { error: pwErr } = await signIn.password({ password });
+        if (pwErr) throw pwErr;
+        currentStatus = signIn.status;
+      }
 
-      if (signIn.status === 'complete') {
+      if ((currentStatus as string) === 'needs_second_factor') {
+        setPending2FA(true);
+        return;
+      }
+
+      if (currentStatus === 'complete') {
         const { error: finalErr } = await signIn.finalize();
         if (finalErr) throw finalErr;
         await finalizeLogin();
-      } else if (signIn.status === 'needs_second_factor') {
-        setPending2FA(true);
       } else {
-        setErrorMessage(`Sign in incomplete (${signIn.status}). Please try again.`);
+        setErrorMessage(`Sign in status: ${currentStatus}. Please verify your credentials or check Clerk settings.`);
       }
     } catch (err: any) {
       console.warn('[CLERK_SIGNIN_ERR]', err);
@@ -110,6 +120,18 @@ export default function LoginScreen() {
 
   const finalizeLogin = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      // Check if user already has an existing profile in the database
+      const existing = await SyncService.fetchUserProfile();
+      if (existing) {
+        await SecureStore.setItemAsync('humanaudit_onboarding_completed', 'true');
+        router.replace('/(tabs)');
+        return;
+      }
+    } catch {
+      // Fallback to local flag if offline
+    }
 
     const onboardingCompleted = await SecureStore.getItemAsync('humanaudit_onboarding_completed');
     if (onboardingCompleted === 'true') {

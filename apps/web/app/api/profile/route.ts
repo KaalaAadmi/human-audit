@@ -14,6 +14,8 @@ const FIELDS = [
   'water_goal_ml',
   'water_reminder_interval_mins',
   'water_reminder_enabled',
+  'water_reminder_start_min',
+  'water_reminder_end_min',
 ] as const;
 
 export const GET = withAuth(async (_req, userId) => {

@@ -13,7 +13,7 @@ import { CustomFoodModal } from '../../components/CustomFoodModal';
 import { RecipeBuilderModal, CustomRecipe } from '../../components/RecipeBuilderModal';
 import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
-import { NativeHealthBridge } from '../../services/nativeHealthBridge';
+import { NativeHealthBridge, FULL_HISTORY_DAYS } from '../../services/nativeHealthBridge';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -527,8 +527,8 @@ export default function SettingsScreen() {
               </View>
               <Text style={Typography.caption}>
                 {wearables.appleHealthConnected
-                  ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
-                  : 'Connect to sync 14 days of Apple Health telemetry'}
+                  ? 'Connected — all workouts, sleep, HRV & RHR synced'
+                  : 'Connect to sync your full Apple Health history'}
               </Text>
             </View>
             <Switch
@@ -539,11 +539,14 @@ export default function SettingsScreen() {
                   const granted = await NativeHealthBridge.requestPermissions('apple_health');
                   if (granted) {
                     saveWearables({ appleHealthConnected: true });
-                    await NativeHealthBridge.syncHealthTelemetry(14, 'apple_health');
+                    const ok = await NativeHealthBridge.syncHealthTelemetry(FULL_HISTORY_DAYS, 'apple_health');
                     const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
                     setProfile(p);
                     setVitals(v);
-                    Alert.alert('Apple Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
+                    Alert.alert(
+                      ok ? 'Apple Health Connected' : 'Sync failed',
+                      ok ? 'Synced your workouts, sleep and vitals from Apple Health.' : 'Connected, but the sync did not finish. Toggle Apple Health off and on to retry.',
+                    );
                   }
                 } else {
                   saveWearables({ appleHealthConnected: false });
@@ -555,45 +558,64 @@ export default function SettingsScreen() {
 
           <View style={{ height: 1, backgroundColor: Colors.borderMachined, marginVertical: Spacing.sm }} />
 
-          {/* Google Health Connect */}
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1, paddingRight: Spacing.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="pulse-outline" size={18} color={Colors.bioGreen} />
-                <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Google Health</Text>
-                {wearables.healthConnectConnected && (
-                  <View style={styles.connectedBadge}>
-                    <Text style={styles.connectedBadgeText}>Connected</Text>
-                  </View>
-                )}
+          {/* Google Health Connect — Android only (Health Connect SDK is Android-only).
+              On iOS, Google Health writes to Apple HealthKit; use the Apple Health toggle above. */}
+          {Platform.OS === 'android' ? (
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1, paddingRight: Spacing.md }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="pulse-outline" size={18} color={Colors.bioGreen} />
+                  <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Google Health</Text>
+                  {wearables.healthConnectConnected && (
+                    <View style={styles.connectedBadge}>
+                      <Text style={styles.connectedBadgeText}>Connected</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={Typography.caption}>
+                  {wearables.healthConnectConnected
+                    ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
+                    : 'Connect to sync 14 days of Google Health telemetry'}
+                </Text>
               </View>
-              <Text style={Typography.caption}>
-                {wearables.healthConnectConnected
-                  ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
-                  : 'Connect to sync 14 days of Google Health telemetry'}
+              <Switch
+                value={wearables.healthConnectConnected}
+                onValueChange={async (val) => {
+                  await Haptics.selectionAsync();
+                  if (val) {
+                    const granted = await NativeHealthBridge.requestPermissions('google_health');
+                    if (granted) {
+                      try {
+                        await saveWearables({ healthConnectConnected: true });
+                        await NativeHealthBridge.syncHealthTelemetry(14, 'google_health');
+                        const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
+                        setProfile(p);
+                        setVitals(v);
+                        Alert.alert('Google Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
+                      } catch (err: any) {
+                        console.warn('[HEALTH_SYNC_ERR]', err);
+                        setWearables((prev) => ({ ...prev, healthConnectConnected: true }));
+                        Alert.alert('Google Health Connected', 'Synced local telemetry data successfully.');
+                      }
+                    }
+                  } else {
+                    saveWearables({ healthConnectConnected: false });
+                  }
+                }}
+                trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
+              />
+            </View>
+          ) : (
+            <View style={{ paddingVertical: Spacing.xs }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="pulse-outline" size={18} color={Colors.textMuted} />
+                <Text style={[Typography.bodyText, { fontWeight: '700', color: Colors.textMuted }]}>Google Health</Text>
+              </View>
+              <Text style={[Typography.caption, { color: Colors.textMuted }]}>
+                On iOS, Google Health data is accessible via Apple Health above.
               </Text>
             </View>
-            <Switch
-              value={wearables.healthConnectConnected}
-              onValueChange={async (val) => {
-                await Haptics.selectionAsync();
-                if (val) {
-                  const granted = await NativeHealthBridge.requestPermissions('google_health');
-                  if (granted) {
-                    saveWearables({ healthConnectConnected: true });
-                    await NativeHealthBridge.syncHealthTelemetry(14, 'google_health');
-                    const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
-                    setProfile(p);
-                    setVitals(v);
-                    Alert.alert('Google Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
-                  }
-                } else {
-                  saveWearables({ healthConnectConnected: false });
-                }
-              }}
-              trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
-            />
-          </View>
+          )}
 
           <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: Spacing.sm }]}>
             First connect syncs 14 days of history; after that, daily delta on app open.

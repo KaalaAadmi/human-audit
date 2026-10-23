@@ -175,8 +175,9 @@ export const SyncService = {
     return (await api('/api/vitals', { method: 'POST', body })).vitals;
   },
 
-  async fetchWorkouts(date = localDate()): Promise<any[]> {
-    return (await api(`/api/workouts?date=${date}`)).workouts;
+  async fetchWorkouts(date = localDate()): Promise<{ today: any[]; recent: any[] }> {
+    const r = await api(`/api/workouts?date=${date}&recent=1`);
+    return { today: r.workouts ?? [], recent: r.recentWorkouts ?? [] };
   },
 
   async saveWorkouts(workoutsData: Record<string, unknown> | Array<Record<string, unknown>>) {

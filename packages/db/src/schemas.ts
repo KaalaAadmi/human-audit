@@ -17,6 +17,8 @@ import { pgTable, text, uuid, integer, numeric, boolean, timestamp, date, unique
     waterGoalMl: integer('water_goal_ml').default(3000).notNull(),
     waterReminderIntervalMins: integer('water_reminder_interval_mins').default(90).notNull(),
     waterReminderEnabled: boolean('water_reminder_enabled').default(true).notNull(),
+    waterReminderStartMin: integer('water_reminder_start_min').default(480).notNull(),  // minutes from local midnight (480 = 8:00 AM)
+    waterReminderEndMin: integer('water_reminder_end_min').default(1320).notNull(),     // 1320 = 10:00 PM
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   }).enableRLS();

@@ -2,15 +2,24 @@ import { NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
 import { badRequest, isDate, withAuth } from '../../../lib/route';
 
-/** Active workouts that started on ?date= (UTC day; ponytail: pass a tz offset if local-day accuracy matters). */
+/** Active workouts for ?date=. If ?recent=1, also returns the 50 most recent workouts before that date. */
 export const GET = withAuth(async (req, userId) => {
-  const date = new URL(req.url).searchParams.get('date');
+  const params = new URL(req.url).searchParams;
+  const date = params.get('date');
+  const recent = params.get('recent') === '1';
   if (!isDate(date)) return badRequest('date (YYYY-MM-DD) is required');
   const workouts = await query(
     `SELECT * FROM workout_logs WHERE user_id = $1 AND deduped_status = 'active' AND start_time::date = $2 ORDER BY start_time`,
     [userId, date]
   );
-  return NextResponse.json({ success: true, workouts });
+  // ponytail: fixed cap of 50, no pagination; add ?before= cursor if users outgrow it.
+  const recentWorkouts = recent
+    ? await query(
+        `SELECT * FROM workout_logs WHERE user_id = $1 AND deduped_status = 'active' AND start_time::date < $2 ORDER BY start_time DESC LIMIT 50`,
+        [userId, date]
+      )
+    : [];
+  return NextResponse.json({ success: true, workouts, recentWorkouts });
 });
 
 /** Insert one or multiple workout logs. */
@@ -27,7 +36,13 @@ export const POST = withAuth(async (req, userId) => {
         zone1_seconds, zone2_seconds, zone3_seconds, zone4_seconds, zone5_seconds, deduped_status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
-      ) RETURNING *`,
+      ) ON CONFLICT (user_id, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+        workout_type = EXCLUDED.workout_type,
+        duration_seconds = EXCLUDED.duration_seconds,
+        active_calories = EXCLUDED.active_calories,
+        avg_heart_rate = EXCLUDED.avg_heart_rate,
+        max_heart_rate = EXCLUDED.max_heart_rate
+      RETURNING *`,
       [
         crypto.randomUUID(),
         userId,

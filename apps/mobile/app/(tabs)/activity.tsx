@@ -22,8 +22,50 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
   google_health: { label: 'GOOGLE HEALTH', color: Colors.bioAmber },
 };
 
+const prettyType = (t: string) => String(t).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+function WorkoutCard({ w, active, onPress }: { w: any; active: boolean; onPress: () => void }) {
+  const badge = SOURCE_BADGE[w.source] ?? { label: String(w.source).toUpperCase(), color: Colors.textMuted };
+  return (
+    <Pressable onPress={onPress}>
+      <GlassCard style={[styles.workoutCard, active && { borderColor: Colors.bioGreen, backgroundColor: 'rgba(52, 211, 153, 0.05)' }]}>
+        <View style={styles.badgeRow}>
+          <View style={[styles.sourceBadge, { borderColor: badge.color }]}>
+            <Text style={[Typography.caption, { color: badge.color, fontSize: 10, fontWeight: '700' }]}>{badge.label}</Text>
+          </View>
+          {w.start_time && (
+            <Text style={[Typography.caption, { fontSize: 10, color: Colors.textMuted }]}>
+              {new Date(w.start_time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              {' • '}
+              {new Date(w.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          )}
+        </View>
+        <Text style={[Typography.cardTitle, { marginTop: 4 }]}>{prettyType(w.workout_type)}</Text>
+        <Text style={[Typography.caption, { marginTop: 2 }]}>
+          {Math.round(w.duration_seconds / 60)} min • {w.active_calories} kcal
+        </Text>
+        <View style={styles.telemetryRow}>
+          <View style={styles.telemetryItem}>
+            <Text style={Typography.caption}>AVG HR</Text>
+            <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{w.avg_heart_rate ?? '--'} bpm</Text>
+          </View>
+          <View style={styles.telemetryItem}>
+            <Text style={Typography.caption}>MAX HR</Text>
+            <Text style={[Typography.bodyMono, { color: Colors.bioRose }]}>{w.max_heart_rate ?? '--'} bpm</Text>
+          </View>
+          <View style={styles.telemetryItem}>
+            <Text style={Typography.caption}>ACTIVE BURN</Text>
+            <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{w.active_calories} kcal</Text>
+          </View>
+        </View>
+      </GlassCard>
+    </Pressable>
+  );
+}
+
 export default function ActivityScreen() {
-  const { loading, error, workouts, vitals } = useToday();
+  const { loading, error, workouts, recentWorkouts, vitals } = useToday();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (loading) return <View style={[styles.container, { justifyContent: 'center' }]}><ActivityIndicator color={Colors.bioGreen} /></View>;
@@ -57,12 +99,14 @@ export default function ActivityScreen() {
           {!vitals && <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: 4 }]}>Connect a wearable to see your strain.</Text>}
         </GlassCard>
 
-        {!active ? (
+        {!active && (
           <GlassCard style={styles.zonesCard}>
             <Text style={Typography.cardTitle}>No workouts today</Text>
             <Text style={[Typography.caption, { marginTop: 4 }]}>Workouts from your wearable will appear here once synced.</Text>
           </GlassCard>
-        ) : (
+        )}
+
+        {active && (
           <>
             <View style={styles.sectionHeader}>
               <Text style={Typography.cardTitle}>Karvonen HR Reserve Zones (1–5)</Text>
@@ -90,44 +134,21 @@ export default function ActivityScreen() {
             </GlassCard>
 
             <View style={styles.sectionHeader}>
-              <Text style={Typography.cardTitle}>Deduplicated Workouts</Text>
+              <Text style={Typography.cardTitle}>Today's Workouts</Text>
               <Text style={Typography.caption}>Fitbit prioritized over Apple / Google</Text>
             </View>
 
-            {workouts.map(w => {
-              const badge = SOURCE_BADGE[w.source] ?? { label: String(w.source).toUpperCase(), color: Colors.textMuted };
-              return (
-                <Pressable key={w.id} onPress={() => { Haptics.selectionAsync(); setSelectedId(w.id); }}>
-                  <GlassCard style={[styles.workoutCard, w.id === active.id && { borderColor: Colors.bioGreen, backgroundColor: 'rgba(52, 211, 153, 0.05)' }]}>
-                    <View style={styles.badgeRow}>
-                      <View style={[styles.sourceBadge, { borderColor: badge.color }]}>
-                        <Text style={[Typography.caption, { color: badge.color, fontSize: 10, fontWeight: '700' }]}>{badge.label}</Text>
-                      </View>
-                    </View>
-                    <Text style={[Typography.cardTitle, { marginTop: 4 }]}>{w.workout_type}</Text>
-                    <Text style={[Typography.caption, { marginTop: 2 }]}>
-                      {Math.round(w.duration_seconds / 60)} min • {w.active_calories} kcal
-                    </Text>
-                    <View style={styles.telemetryRow}>
-                      <View style={styles.telemetryItem}>
-                        <Text style={Typography.caption}>AVG HR</Text>
-                        <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{w.avg_heart_rate ?? '--'} bpm</Text>
-                      </View>
-                      <View style={styles.telemetryItem}>
-                        <Text style={Typography.caption}>MAX HR</Text>
-                        <Text style={[Typography.bodyMono, { color: Colors.bioRose }]}>{w.max_heart_rate ?? '--'} bpm</Text>
-                      </View>
-                      <View style={styles.telemetryItem}>
-                        <Text style={Typography.caption}>ACTIVE BURN</Text>
-                        <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{w.active_calories} kcal</Text>
-                      </View>
-                    </View>
-                  </GlassCard>
-                </Pressable>
-              );
-            })}
+            {workouts.map(w => <WorkoutCard key={w.id} w={w} active={w.id === active.id} onPress={() => { Haptics.selectionAsync(); setSelectedId(w.id); }} />)}
           </>
         )}
+
+        <View style={styles.sectionHeader}>
+          <Text style={Typography.cardTitle}>Previous Workouts</Text>
+          <Text style={Typography.caption}>Synced from your wearable • most recent first</Text>
+        </View>
+        {recentWorkouts.length > 0
+          ? recentWorkouts.map(w => <WorkoutCard key={w.id} w={w} active={false} onPress={() => {}} />)
+          : <Text style={[Typography.caption, { marginBottom: Spacing.md }]}>No previous workouts yet.</Text>}
       </ScrollView>
     </View>
   );

@@ -18,6 +18,8 @@ CREATE TABLE user_profiles (
   water_goal_ml INTEGER NOT NULL DEFAULT 3000,
   water_reminder_interval_mins INTEGER NOT NULL DEFAULT 90,
   water_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  water_reminder_start_min INTEGER NOT NULL DEFAULT 480,   -- minutes from local midnight (8:00 AM)
+  water_reminder_end_min INTEGER NOT NULL DEFAULT 1320,    -- 10:00 PM
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

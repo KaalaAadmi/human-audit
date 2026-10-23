@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,11 +8,9 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  Platform,
-  Alert,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
-import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../theme/colors";
 import { Typography } from "../../theme/typography";
@@ -23,23 +21,12 @@ import { localDate } from "../../lib/api";
 import {
   DEFAULT_REMINDER_START_MIN,
   DEFAULT_REMINDER_END_MIN,
+  fmtMin,
   scheduleWaterReminders,
 } from "../../services/waterReminders";
+import { ConfettiCelebration } from "../../components/ConfettiCelebration";
 
 const warn = (e: unknown) => console.warn("[SYNC_ERR]", e);
-
-/** Minutes from midnight -> "8:00 AM". */
-const fmtMin = (m: number) => {
-  const h = Math.floor(m / 60);
-  return `${h % 12 || 12}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-};
-/** Minutes from midnight -> a Date today at that local time (what the picker wants). */
-const minToDate = (m: number) => {
-  const d = new Date();
-  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
-  return d;
-};
-import { ConfettiCelebration } from "../../components/ConfettiCelebration";
 
 export default function WaterScreen() {
   const [waterMl, setWaterMl] = useState(0);
@@ -48,8 +35,6 @@ export default function WaterScreen() {
   const [intervalMins, setIntervalMins] = useState(90);
   const [startMin, setStartMin] = useState(DEFAULT_REMINDER_START_MIN);
   const [endMin, setEndMin] = useState(DEFAULT_REMINDER_END_MIN);
-  const [editingTime, setEditingTime] = useState<"start" | "end" | null>(null); // iOS picker modal
-  const [draftMin, setDraftMin] = useState(0); // iOS picker value, applied on Done
   const [isLoading, setIsLoading] = useState(true);
 
   // Celebration state
@@ -70,6 +55,18 @@ export default function WaterScreen() {
   useEffect(() => {
     loadHydrationTelemetry();
   }, []);
+
+  // The reminder window is edited in the System tab; re-read it whenever this tab regains focus.
+  useFocusEffect(
+    useCallback(() => {
+      SyncService.fetchUserProfile()
+        .then((p) => {
+          setStartMin(p?.water_reminder_start_min ?? DEFAULT_REMINDER_START_MIN);
+          setEndMin(p?.water_reminder_end_min ?? DEFAULT_REMINDER_END_MIN);
+        })
+        .catch(warn);
+    }, [])
+  );
 
   const loadHydrationTelemetry = async () => {
     setIsLoading(true);
@@ -171,45 +168,6 @@ export default function WaterScreen() {
     }).catch(warn);
 
     scheduleWaterReminders(newStatus, startMin, endMin, intervalMins).catch(warn);
-  };
-
-  /** Validates, saves and (if reminders are on) reschedules a new reminder window. */
-  const saveWindow = (start: number, end: number) => {
-    if (end <= start) {
-      Alert.alert("Invalid window", "The end time must be after the start time.");
-      return;
-    }
-    Haptics.selectionAsync();
-    setStartMin(start);
-    setEndMin(end);
-    SyncService.updateUserProfile({
-      water_reminder_start_min: start,
-      water_reminder_end_min: end,
-    }).catch(warn);
-    scheduleWaterReminders(remindersEnabled, start, end, intervalMins).catch(warn);
-  };
-
-  const editTime = (which: "start" | "end") => {
-    Haptics.selectionAsync();
-    const current = which === "start" ? startMin : endMin;
-    const apply = (m: number) => (which === "start" ? saveWindow(m, endMin) : saveWindow(startMin, m));
-    if (Platform.OS === "ios") {
-      setDraftMin(current);
-      setEditingTime(which);
-      return;
-    }
-    DateTimePickerAndroid.open({
-      value: minToDate(current),
-      mode: "time",
-      is24Hour: false,
-      onValueChange: (_e, date) => apply(date.getHours() * 60 + date.getMinutes()),
-    });
-  };
-
-  const confirmIosTime = () => {
-    if (editingTime === "start") saveWindow(draftMin, endMin);
-    else if (editingTime === "end") saveWindow(startMin, draftMin);
-    setEditingTime(null);
   };
 
   const handleCustomLogSubmit = () => {
@@ -377,19 +335,14 @@ export default function WaterScreen() {
             <Text style={{ color: Colors.textPrimary, fontWeight: "700" }}>
               {intervalMins} mins
             </Text>{" "}
-            between
+            between{" "}
+            <Text style={{ color: Colors.textPrimary, fontWeight: "700" }}>
+              {fmtMin(startMin)} – {fmtMin(endMin)}
+            </Text>
           </Text>
-          <View style={styles.timeRow}>
-            <TouchableOpacity style={styles.timeChip} onPress={() => editTime("start")}>
-              <Text style={styles.timeChipLabel}>FROM</Text>
-              <Text style={styles.timeChipValue}>{fmtMin(startMin)}</Text>
-            </TouchableOpacity>
-            <Ionicons name="arrow-forward" size={14} color={Colors.textMuted} />
-            <TouchableOpacity style={styles.timeChip} onPress={() => editTime("end")}>
-              <Text style={styles.timeChipLabel}>TO</Text>
-              <Text style={styles.timeChipValue}>{fmtMin(endMin)}</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={[Typography.caption, { marginTop: Spacing.xs, color: Colors.textMuted }]}>
+            Change the reminder window in the System tab.
+          </Text>
         </GlassCard>
 
         {/* Reset Button */}
@@ -405,41 +358,6 @@ export default function WaterScreen() {
         title="HYDRATION TARGET CRUSHED! 💧"
         subtitle={`${waterMl.toLocaleString()} ml / ${goalMl.toLocaleString()} ml achieved today`}
       />
-
-      {/* iOS reminder time picker (Android uses the native dialog via DateTimePickerAndroid) */}
-      <Modal
-        visible={editingTime !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditingTime(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={Typography.cardTitle}>
-              {editingTime === "start" ? "Reminders start at" : "Reminders end at"}
-            </Text>
-            {/* White background forces UIKit to render the picker in light mode so the text stays visible. */}
-            <View style={{ backgroundColor: "#ffffff", borderRadius: 12, marginVertical: Spacing.md }}>
-              {editingTime && (
-                <DateTimePicker
-                  value={minToDate(draftMin)}
-                  mode="time"
-                  display="spinner"
-                  onValueChange={(_e, date) => setDraftMin(date.getHours() * 60 + date.getMinutes())}
-                />
-              )}
-            </View>
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingTime(null)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={confirmIosTime}>
-                <Text style={styles.saveBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Goal Customization Modal */}
       <Modal
@@ -680,32 +598,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  timeChip: {
-    flex: 1,
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
-    borderRadius: 10,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  timeChipLabel: {
-    fontSize: 9,
-    letterSpacing: 1,
-    color: Colors.textMuted,
-  },
-  timeChipValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    marginTop: 2,
   },
   statusPill: {
     paddingHorizontal: Spacing.sm,

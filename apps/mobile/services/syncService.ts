@@ -172,7 +172,7 @@ export const SyncService = {
 
   async saveVitals(vitalsData: Record<string, unknown> | Array<Record<string, unknown>>) {
     const body = Array.isArray(vitalsData) ? { vitalsList: vitalsData } : vitalsData;
-    return (await api('/api/vitals', { method: 'POST', body })).vitals;
+    return (await api('/api/vitals', { method: 'POST', body, timeoutMs: 60000 })).vitals;
   },
 
   async fetchWorkouts(date = localDate()): Promise<{ today: any[]; recent: any[] }> {
@@ -182,7 +182,7 @@ export const SyncService = {
 
   async saveWorkouts(workoutsData: Record<string, unknown> | Array<Record<string, unknown>>) {
     const body = Array.isArray(workoutsData) ? { workouts: workoutsData } : workoutsData;
-    return (await api('/api/workouts', { method: 'POST', body })).workouts;
+    return (await api('/api/workouts', { method: 'POST', body, timeoutMs: 60000 })).workouts;
   },
 
   async fetchUserProfile() {

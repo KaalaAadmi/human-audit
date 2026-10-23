@@ -55,7 +55,11 @@ export function useToday(date?: string) {
         SyncService.fetchFoodLogs(target),
         SyncService.fetchWaterLog(target),
         SyncService.fetchVitals(target),
-        SyncService.fetchWorkouts(target),
+        // Workouts are secondary: if they fail, still show the rest of the screen.
+        SyncService.fetchWorkouts(target).catch((e) => {
+          console.warn('[WORKOUTS_LOAD_ERR]', e);
+          return { today: [], recent: [] };
+        }),
       ]);
 
       if (g && g[dayOfWeek]) {

@@ -46,6 +46,9 @@ function getHK() {
  * pipeline computations, and writes results to the backend.
  */
 export const NativeHealthBridge = {
+  /** Message of the last failed sync, so the UI can show why. */
+  lastError: '',
+
   isAvailable(): boolean {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
@@ -678,6 +681,7 @@ export const NativeHealthBridge = {
       return true;
     } catch (e) {
       console.warn('[HEALTH_SYNC_ERR]', e);
+      this.lastError = (e as Error).message;
       return false;
     }
   },

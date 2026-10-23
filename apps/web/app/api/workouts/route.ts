@@ -26,9 +26,8 @@ export const GET = withAuth(async (req, userId) => {
 export const POST = withAuth(async (req, userId) => {
   const body = await req.json();
   const items = Array.isArray(body.workouts) ? body.workouts : [body];
-  const results = [];
-
-  for (const item of items) {
+  // Parallel: a 50-row chunk done serially (one DB round trip each) outlasts the client's request timeout.
+  const rows = await Promise.all(items.map(async (item: any) => {
     const [saved] = await query(
       `INSERT INTO workout_logs (
         id, user_id, external_id, source, workout_type, start_time, end_time,
@@ -63,8 +62,9 @@ export const POST = withAuth(async (req, userId) => {
         item.deduped_status ?? item.dedupedStatus ?? 'active',
       ]
     );
-    if (saved) results.push(saved);
-  }
+    return saved ?? null;
+  }));
+  const results = rows.filter(Boolean);
 
   return NextResponse.json({ success: true, workouts: results, count: results.length });
 });

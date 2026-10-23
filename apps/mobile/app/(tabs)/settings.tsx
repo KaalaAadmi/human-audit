@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, StyleSheet, Text, View, ScrollView, Pressable, TextInput, Switch, TouchableOpacity, Alert } from 'react-native';
+import { Platform, StyleSheet, Text, View, ScrollView, Pressable, TextInput, Switch, TouchableOpacity, Alert, Modal } from 'react-native';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ import { RecipeBuilderModal, CustomRecipe } from '../../components/RecipeBuilder
 import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
 import { NativeHealthBridge, FULL_HISTORY_DAYS } from '../../services/nativeHealthBridge';
+import { DEFAULT_REMINDER_START_MIN, DEFAULT_REMINDER_END_MIN, fmtMin, minToDate, scheduleWaterReminders } from '../../services/waterReminders';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -91,6 +93,53 @@ export default function SettingsScreen() {
     await Haptics.selectionAsync();
     setBiometricsEnabled(val);
     await SecureStore.setItemAsync(BIOMETRICS_ENABLED_KEY, val ? 'true' : 'false');
+  };
+
+  // Water reminder window (stored as minutes from midnight on the profile)
+  const [editingTime, setEditingTime] = useState<'start' | 'end' | null>(null); // iOS picker modal
+  const [draftMin, setDraftMin] = useState(0); // iOS picker value, applied on Done
+  const reminderStart: number = profile?.water_reminder_start_min ?? DEFAULT_REMINDER_START_MIN;
+  const reminderEnd: number = profile?.water_reminder_end_min ?? DEFAULT_REMINDER_END_MIN;
+
+  /** Validates, saves and (if reminders are on) reschedules the reminder window. */
+  const saveReminderWindow = (start: number, end: number) => {
+    if (end <= start) {
+      Alert.alert('Invalid window', 'The end time must be after the start time.');
+      return;
+    }
+    Haptics.selectionAsync();
+    const patch = { water_reminder_start_min: start, water_reminder_end_min: end };
+    const prev = profile;
+    setProfile((p: any) => ({ ...p, ...patch }));
+    SyncService.updateUserProfile(patch).catch(e => { setProfile(prev); fail('Could not save reminder window')(e); });
+    scheduleWaterReminders(
+      profile?.water_reminder_enabled ?? true, start, end, profile?.water_reminder_interval_mins || 90,
+    ).catch(e => console.warn('[REMINDER_ERR]', e));
+  };
+
+  const editReminderTime = (which: 'start' | 'end') => {
+    Haptics.selectionAsync();
+    const current = which === 'start' ? reminderStart : reminderEnd;
+    if (Platform.OS === 'ios') {
+      setDraftMin(current);
+      setEditingTime(which);
+      return;
+    }
+    DateTimePickerAndroid.open({
+      value: minToDate(current),
+      mode: 'time',
+      is24Hour: false,
+      onValueChange: (_e, date) => {
+        const m = date.getHours() * 60 + date.getMinutes();
+        which === 'start' ? saveReminderWindow(m, reminderEnd) : saveReminderWindow(reminderStart, m);
+      },
+    });
+  };
+
+  const confirmIosTime = () => {
+    if (editingTime === 'start') saveReminderWindow(draftMin, reminderEnd);
+    else if (editingTime === 'end') saveReminderWindow(reminderStart, draftMin);
+    setEditingTime(null);
   };
 
   const handleSignOut = async () => {
@@ -506,6 +555,29 @@ export default function SettingsScreen() {
           </Text>
         </GlassCard>
 
+        {/* Water Reminder Window */}
+        <View style={styles.sectionHeader}>
+          <Text style={Typography.cardTitle}>Water Reminders</Text>
+          <Text style={Typography.caption}>Choose the hours you want hydration reminders between</Text>
+        </View>
+
+        <GlassCard style={{ marginBottom: Spacing.xl }}>
+          <View style={styles.timeRow}>
+            <Pressable style={styles.timeChip} onPress={() => editReminderTime('start')}>
+              <Text style={styles.timeChipLabel}>FROM</Text>
+              <Text style={styles.timeChipValue}>{fmtMin(reminderStart)}</Text>
+            </Pressable>
+            <Ionicons name="arrow-forward" size={14} color={Colors.textMuted} />
+            <Pressable style={styles.timeChip} onPress={() => editReminderTime('end')}>
+              <Text style={styles.timeChipLabel}>TO</Text>
+              <Text style={styles.timeChipValue}>{fmtMin(reminderEnd)}</Text>
+            </Pressable>
+          </View>
+          <Text style={[Typography.caption, { marginTop: Spacing.sm, color: Colors.textMuted }]}>
+            Turn reminders on or off, and set the interval, from the Water tab.
+          </Text>
+        </GlassCard>
+
         {/* Health Data Sources */}
         <View style={styles.sectionHeader}>
           <Text style={Typography.cardTitle}>Health Data Sources</Text>
@@ -545,7 +617,7 @@ export default function SettingsScreen() {
                     setVitals(v);
                     Alert.alert(
                       ok ? 'Apple Health Connected' : 'Sync failed',
-                      ok ? 'Synced your workouts, sleep and vitals from Apple Health.' : 'Connected, but the sync did not finish. Toggle Apple Health off and on to retry.',
+                      ok ? 'Synced your workouts, sleep and vitals from Apple Health.' : `Connected, but the sync did not finish: ${NativeHealthBridge.lastError || 'unknown error'}. Toggle Apple Health off and on to retry.`,
                     );
                   }
                 } else {
@@ -720,6 +792,34 @@ export default function SettingsScreen() {
         onClose={() => setShowAddRecipeModal(false)}
         onRecipeSaved={r => SyncService.createCustomRecipe(r).then(saved => setCustomRecipes(prev => [saved, ...prev])).catch(fail('Could not save recipe'))}
       />
+
+      {/* iOS reminder time picker (Android uses the native dialog via DateTimePickerAndroid) */}
+      <Modal visible={editingTime !== null} transparent animationType="fade" onRequestClose={() => setEditingTime(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={Typography.cardTitle}>{editingTime === 'start' ? 'Reminders start at' : 'Reminders end at'}</Text>
+            {editingTime && (
+              <DateTimePicker
+                value={minToDate(draftMin)}
+                mode="time"
+                display="spinner"
+                themeVariant="dark"
+                textColor={Colors.textPrimary}
+                style={{ marginVertical: Spacing.md }}
+                onValueChange={(_e, date) => setDraftMin(date.getHours() * 60 + date.getMinutes())}
+              />
+            )}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setEditingTime(null)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalDoneBtn} onPress={confirmIosTime}>
+                <Text style={styles.modalDoneText}>Done</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -951,6 +1051,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  timeChip: {
+    flex: 1,
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderMachined,
+    borderRadius: 10,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  timeChipLabel: { fontSize: 9, letterSpacing: 1, color: Colors.textMuted },
+  timeChipValue: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, marginTop: 2 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', padding: Spacing.xl },
+  modalCard: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.borderActive,
+    borderRadius: Spacing.radiusCard,
+    padding: Spacing.xl,
+  },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, justifyContent: 'flex-end' },
+  modalCancelBtn: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Spacing.radiusButton },
+  modalCancelText: { color: Colors.textMuted, fontWeight: '600', fontSize: 13 },
+  modalDoneBtn: { backgroundColor: Colors.hydration, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Spacing.radiusButton },
+  modalDoneText: { color: '#000', fontWeight: '700', fontSize: 13 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

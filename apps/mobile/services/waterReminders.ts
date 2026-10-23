@@ -3,6 +3,19 @@ import * as Notifications from 'expo-notifications';
 export const DEFAULT_REMINDER_START_MIN = 480;  // 8:00 AM
 export const DEFAULT_REMINDER_END_MIN = 1320;   // 10:00 PM
 
+/** Minutes from midnight -> "8:00 AM". */
+export const fmtMin = (m: number) => {
+  const h = Math.floor(m / 60);
+  return `${h % 12 || 12}:${String(m % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
+
+/** Minutes from midnight -> a Date today at that local time (what the time picker wants). */
+export const minToDate = (m: number) => {
+  const d = new Date();
+  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  return d;
+};
+
 /** Minutes-from-midnight of every reminder: start, start+interval, ... up to and including end. */
 export function reminderSlots(startMin: number, endMin: number, intervalMins: number): number[] {
   const step = Math.max(30, intervalMins); // floor keeps us well under iOS's 64 pending-notification cap

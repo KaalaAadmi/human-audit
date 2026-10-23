@@ -92,7 +92,8 @@ export function computeSleepResults(nights: NightSleep[]): SleepResult[] {
   for (const night of nights) {
     const enteringDebt = Math.max(0, gapWindow.reduce((s, g) => s + g, 0));
     const need = sleepNeed(night.prevDayStrain, enteringDebt);
-    const rawGap = need - night.totalAsleepSec;
+    // Debt accrues against the base need only. Using `need` here fed the debt term back into the debt, which compounded ~1.33x/night.
+    const rawGap = sleepNeed(night.prevDayStrain, 0) - night.totalAsleepSec;
     const effectiveGap = rawGap > 0 ? rawGap : rawGap * REPAYMENT_RATE;
 
     gapWindow.push(effectiveGap);
@@ -138,5 +139,9 @@ if (typeof require !== 'undefined' && require.main === module) {
   if (res[1].debtSec < 0) throw new Error('debtSec should never be negative');
   if (res[2].efficiencyLabel !== 'SME') throw new Error('night 3 should use SME (no timeInBed)');
   if (res[0].score < 0 || res[0].score > 100) throw new Error('score out of range');
+  // Regression: 730 nights of 6h sleep must stay bounded (debt used to compound to billions of seconds).
+  const long = computeSleepResults(Array.from({ length: 730 }, (_, i) => ({ ...nights[0]!, date: String(i), prevDayStrain: 21 })));
+  // Worst case here: 14 nights x 3.68 h gap = ~52 h debt, need ~ 9.7 h + 0.33 x 52 h = ~27 h. Compounding blew far past this.
+  if (long.some(r => r.debtSec > 14 * 4 * 3600 || r.needSec > 30 * 3600)) throw new Error('sleep debt/need unbounded');
   console.log('sleepEngine check: OK');
 }

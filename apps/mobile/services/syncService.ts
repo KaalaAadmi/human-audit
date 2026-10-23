@@ -171,7 +171,15 @@ export const SyncService = {
   },
 
   async saveVitals(vitalsData: Record<string, unknown> | Array<Record<string, unknown>>) {
-    const body = Array.isArray(vitalsData) ? { vitalsList: vitalsData } : vitalsData;
+    // INTEGER columns reject floats like 92.0000000000001; computed scores and HealthKit HR can be fractional.
+    const INT_COLS = ['sleep_score', 'sleep_need_seconds', 'sleep_debt_seconds', 'sleep_efficiency_pct', 'sleep_duration_seconds',
+      'deep_sleep_seconds', 'rem_sleep_seconds', 'light_sleep_seconds', 'awake_seconds', 'time_in_bed_seconds', 'resting_heart_rate'];
+    const fix = (v: Record<string, unknown>) => {
+      const out = { ...v };
+      for (const c of INT_COLS) if (typeof out[c] === 'number') out[c] = Math.round(out[c] as number);
+      return out;
+    };
+    const body = Array.isArray(vitalsData) ? { vitalsList: vitalsData.map(fix) } : fix(vitalsData);
     return (await api('/api/vitals', { method: 'POST', body, timeoutMs: 60000 })).vitals;
   },
 

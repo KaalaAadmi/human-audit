@@ -198,3 +198,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS "workout_logs_user_id_external_id_unique"
 -- 0006: configurable water reminder window
 ALTER TABLE "user_profiles" ADD COLUMN IF NOT EXISTS "water_reminder_start_min" integer DEFAULT 480 NOT NULL;
 ALTER TABLE "user_profiles" ADD COLUMN IF NOT EXISTS "water_reminder_end_min" integer DEFAULT 1320 NOT NULL;
+
+-- Migration 0007: the live daily_vitals_summary still had NOT NULL on these columns (older schema).
+-- schemas.ts treats them as nullable: a day can have HRV/RHR but no sleep, or vice versa.
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "day_strain" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "sleep_score" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "sleep_duration_seconds" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "deep_sleep_seconds" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "rem_sleep_seconds" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "light_sleep_seconds" DROP NOT NULL;
+ALTER TABLE "daily_vitals_summary" ALTER COLUMN "awake_seconds" DROP NOT NULL;

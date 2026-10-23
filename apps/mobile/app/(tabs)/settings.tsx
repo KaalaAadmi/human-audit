@@ -103,6 +103,7 @@ export default function SettingsScreen() {
 
   /** Validates, saves and (if reminders are on) reschedules the reminder window. */
   const saveReminderWindow = (start: number, end: number) => {
+    if (end === 0) end = 1440; // picking 12:00 AM as the end means "until midnight"
     if (end <= start) {
       Alert.alert('Invalid window', 'The end time must be after the start time.');
       return;

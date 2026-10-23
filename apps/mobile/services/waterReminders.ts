@@ -5,7 +5,7 @@ export const DEFAULT_REMINDER_END_MIN = 1320;   // 10:00 PM
 
 /** Minutes from midnight -> "8:00 AM". */
 export const fmtMin = (m: number) => {
-  const h = Math.floor(m / 60);
+  const h = Math.floor(m / 60) % 24; // 1440 (end of day) shows as 12:00 AM
   return `${h % 12 || 12}:${String(m % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 };
 
@@ -20,7 +20,7 @@ export const minToDate = (m: number) => {
 export function reminderSlots(startMin: number, endMin: number, intervalMins: number): number[] {
   const step = Math.max(30, intervalMins); // floor keeps us well under iOS's 64 pending-notification cap
   const slots: number[] = [];
-  for (let m = startMin; m <= endMin; m += step) slots.push(m);
+  for (let m = startMin; m <= endMin && m < 1440; m += step) slots.push(m); // 1440 = midnight end, not a valid trigger hour
   return slots;
 }
 

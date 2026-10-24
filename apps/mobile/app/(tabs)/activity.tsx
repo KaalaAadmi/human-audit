@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../../theme/colors';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { useToday } from '../../hooks/useToday';
+import { syncAll } from '../../services/connectors';
 
 // ponytail: zone percentage ranges are placeholders until the zone boundaries are decided (see docs/PRD.md).
 const ZONES = [
@@ -65,7 +66,14 @@ function WorkoutCard({ w, active, onPress }: { w: any; active: boolean; onPress:
 }
 
 export default function ActivityScreen() {
-  const { loading, error, workouts, recentWorkouts, vitals } = useToday();
+  const { loading, error, workouts, recentWorkouts, vitals, refresh } = useToday();
+  const [pulling, setPulling] = useState(false);
+  const pull = async () => {
+    setPulling(true);
+    await syncAll({ force: true }).catch(() => undefined);
+    await refresh();
+    setPulling(false);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (loading) return <View style={[styles.container, { justifyContent: 'center' }]}><ActivityIndicator color={Colors.bioGreen} /></View>;
@@ -77,7 +85,7 @@ export default function ActivityScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
         <View style={styles.header}>
           <Text style={Typography.heroTitle}>Activity & Strain</Text>
           {(vitals || workouts.length > 0) && (

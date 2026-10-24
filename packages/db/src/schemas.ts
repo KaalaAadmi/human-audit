@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, integer, numeric, boolean, timestamp, date, unique, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, integer, smallint, numeric, boolean, timestamp, date, unique, jsonb, primaryKey, doublePrecision, bigserial, customType } from 'drizzle-orm/pg-core';
 
 // Access control lives in the Next.js API (verifies the Clerk token, queries as a privileged role).
 // RLS is enabled with no policies on every table => direct anon/authenticated access (e.g. Supabase REST) is denied.
@@ -108,6 +108,10 @@ import { pgTable, text, uuid, integer, numeric, boolean, timestamp, date, unique
     // HRV / HR
     overnightHrvRmssd: numeric('overnight_hrv_rmssd', { precision: 5, scale: 2 }),
     restingHeartRate: integer('resting_heart_rate'),
+    hrvVariant: text('hrv_variant'), // 'sdnn' | 'rmssd'; baselines are per variant
+    sleepSource: text('sleep_source'), // source_id of the connection that won, for the UI label
+    hrvSource: text('hrv_source'),
+    rhrSource: text('rhr_source'),
     // Body age (null until waistCm is set)
     vo2maxMlKgMin: numeric('vo2max_ml_kg_min', { precision: 5, scale: 2 }),
     fitnessAge: numeric('fitness_age', { precision: 4, scale: 2 }),
@@ -158,4 +162,116 @@ import { pgTable, text, uuid, integer, numeric, boolean, timestamp, date, unique
     totalFatsG: numeric('total_fats_g', { precision: 7, scale: 2 }).notNull(),
     ingredientsJson: jsonb('ingredients_json').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  }).enableRLS();
+  // ---- Data connectors (docs/data-connectors.md section 5; SQL in drizzle/0008_data_connectors.sql) ----
+  const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+
+  export const sourceId = pgEnum('source_id', ['healthkit', 'health_connect', 'google_health']);
+  export const connectionStatus = pgEnum('connection_status', [
+    'connecting', 'connected', 'partial', 'stale', 'needs_reauth', 'collector_missing', 'error', 'not_connected',
+  ]);
+
+  export const devices = pgTable('devices', {
+    id: uuid('id').primaryKey(), // generated on the phone, kept in expo-secure-store
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    platform: text('platform').notNull(), // 'ios' | 'android'
+    name: text('name').notNull(),
+    appVersion: text('app_version'),
+    pushToken: text('push_token'),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  }).enableRLS();
+
+  export const connections = pgTable('connections', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    source: sourceId('source').notNull(),
+    status: connectionStatus('status').default('connecting').notNull(),
+    collectorDeviceId: uuid('collector_device_id').references(() => devices.id),
+    grantedMetrics: text('granted_metrics').array().default([]).notNull(),
+    grantedScopes: text('granted_scopes').array(),
+    externalUserId: text('external_user_id'), // google_health: healthUserId
+    connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    lastSyncError: jsonb('last_sync_error'),
+    backfillCompletedAt: timestamp('backfill_completed_at', { withTimezone: true }),
+  }, (t) => [unique().on(t.userId, t.source)]).enableRLS();
+
+  export const syncCursors = pgTable('sync_cursors', {
+    connectionId: uuid('connection_id').references(() => connections.id, { onDelete: 'cascade' }).notNull(),
+    metric: text('metric').notNull(),
+    cursor: text('cursor').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  }, (t) => [primaryKey({ columns: [t.connectionId, t.metric] })]).enableRLS();
+
+  export const oauthTokens = pgTable('oauth_tokens', {
+    connectionId: uuid('connection_id').primaryKey().references(() => connections.id, { onDelete: 'cascade' }),
+    refreshTokenEnc: bytea('refresh_token_enc').notNull(), // AES-256-GCM
+    accessTokenEnc: bytea('access_token_enc'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    scopes: text('scopes').array().notNull(),
+  }).enableRLS();
+
+  export const samples = pgTable('samples', {
+    id: text('id').primaryKey(), // hash(source, metric, originId): idempotent upserts
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    connectionId: uuid('connection_id').references(() => connections.id, { onDelete: 'cascade' }).notNull(),
+    source: sourceId('source').notNull(),
+    metric: text('metric').notNull(),
+    variant: text('variant'), // 'sdnn' | 'rmssd' for HRV
+    value: doublePrecision('value'),
+    unit: text('unit').notNull(),
+    startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+    endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+    tzOffsetMinutes: smallint('tz_offset_minutes').notNull(),
+    originApp: text('origin_app'),
+    originDevice: text('origin_device'),
+    originId: text('origin_id').notNull(),
+    payload: jsonb('payload'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    ingestedAt: timestamp('ingested_at', { withTimezone: true }).defaultNow().notNull(),
+  }).enableRLS();
+
+  export const metricPreferences = pgTable('metric_preferences', {
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    metric: text('metric').notNull(),
+    connectionOrder: uuid('connection_order').array().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  }, (t) => [primaryKey({ columns: [t.userId, t.metric] })]).enableRLS();
+
+  export const dailySummaries = pgTable('daily_summaries', {
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    localDate: date('local_date').notNull(),
+    metric: text('metric').notNull(),
+    value: doublePrecision('value'), // null = no data, not zero
+    unit: text('unit').notNull(),
+    connectionId: uuid('connection_id').references(() => connections.id, { onDelete: 'set null' }),
+    variant: text('variant'),
+    payload: jsonb('payload'),
+  }, (t) => [primaryKey({ columns: [t.userId, t.localDate, t.metric] })]).enableRLS();
+
+  export const originMap = pgTable('origin_map', {
+    originApp: text('origin_app').primaryKey(),
+    label: text('label').notNull(),
+    mirrorsSource: sourceId('mirrors_source'),
+  }).enableRLS();
+
+  // Postgres-backed job queue (replaces pgmq); drained by POST /api/v1/jobs/run.
+  export const jobs = pgTable('jobs', {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    kind: text('kind').notNull(),
+    payload: jsonb('payload').default({}).notNull(),
+    runAt: timestamp('run_at', { withTimezone: true }).defaultNow().notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  }).enableRLS();
+
+  // Single-use OAuth `state` nonces for the Google Health connect flow.
+  export const oauthStates = pgTable('oauth_states', {
+    nonce: text('nonce').primaryKey(),
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'cascade' }).notNull(),
+    deviceId: uuid('device_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   }).enableRLS();

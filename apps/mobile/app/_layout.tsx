@@ -8,6 +8,8 @@ import * as SecureStore from 'expo-secure-store';
 import { Colors } from '../theme/colors';
 import { CLERK_PUBLISHABLE_KEY, tokenCache } from '../lib/clerk';
 import { BiometricPrivacyLock } from '../components/BiometricPrivacyLock';
+// Importing this file defines the background task and HealthKit subscriptions at module scope, before any screen mounts.
+import { syncAll } from '../services/connectors';
 
 function RootLayoutNav() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -32,6 +34,11 @@ function RootLayoutNav() {
       });
     }
   }, [isSignedIn, isLoaded, segments]);
+
+  // Register this phone and pull new health data on every cold start / sign-in (syncAll throttles itself).
+  useEffect(() => {
+    if (isLoaded && isSignedIn) syncAll().catch((e) => console.warn('[CONNECTORS_SYNC_ERR]', e));
+  }, [isLoaded, isSignedIn]);
 
   return (
     <BiometricPrivacyLock isAuthenticated={Boolean(isSignedIn)}>

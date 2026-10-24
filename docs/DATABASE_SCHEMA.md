@@ -161,6 +161,25 @@ ALTER TABLE daily_vitals_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wearable_settings ENABLE ROW LEVEL SECURITY;
 ```
 
+### Data connectors (migration `0008_data_connectors.sql`)
+
+Design: [`data-connectors.md`](./data-connectors.md). The full DDL is in `packages/db/drizzle/0008_data_connectors.sql`; this is the map.
+
+| Table | Purpose |
+|---|---|
+| `devices` | One row per install. `id` is a client-generated uuid kept in the keychain; a uuid owned by another user is rejected (409) and the client mints a new one. |
+| `connections` | One per (user, `source_id`). Enum `source_id`: `healthkit`, `health_connect`, `google_health`. Enum `connection_status`: connecting, connected, partial, stale, needs_reauth, collector_missing, error, not_connected. Device-bound sources have `collector_device_id`. |
+| `sync_cursors` | Per (connection, metric): HealthKit anchor or Health Connect changes token. Device-local, so cleared when the collector moves. |
+| `oauth_tokens` | Google Health refresh/access tokens, AES-256-GCM encrypted with `TOKEN_ENCRYPTION_KEY`. |
+| `oauth_states` | Single-use OAuth `state` nonces. |
+| `samples` | Raw, source-tagged data. `id` is a hash of (source, metric, origin_id). `deleted_at` is a tombstone, never a hard delete. |
+| `metric_preferences` | Per (user, metric): ordered `connection_order uuid[]`. |
+| `daily_summaries` | Resolved value per (user, date, metric) plus `payload jsonb`; winning source recorded. Recomputed by the `summaries_recompute` job. |
+| `origin_map` | `origin_app` (e.g. the Google Health bundle id) -> the direct source it mirrors, so mirrored copies are skipped at summary time. |
+| `jobs` | Postgres job queue (`gh_fetch`, `gh_poll`, `summaries_recompute`, `connections_stale_check`), drained by `POST /api/v1/jobs/run`. |
+
+`daily_vitals_summary` gains `hrv_variant`, `sleep_source`, `hrv_source`, `rhr_source`. It and `workout_logs` stay as read models, rewritten from `daily_summaries`, so the existing screens keep working. `overnight_hrv_rmssd` now holds SDNN when the source is Apple Health; `hrv_variant` says which.
+
 ---
 
 ## 2. Zero-Downtime Migration Protocol (Supabase $\rightarrow$ Self-Hosted VM)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from './auth';
+import { HttpError } from './connectors/store';
 
 type Handler = (req: NextRequest, userId: string) => Promise<Response>;
 
@@ -16,6 +17,7 @@ export const withAuth = (handler: Handler) => async (req: NextRequest) => {
   try {
     return await handler(req, userId);
   } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     const err = e as { code?: string; message?: string };
     // Bad JSON body, or Postgres class 22/23 (bad value, constraint violation e.g. no profile row yet).
     if (e instanceof SyntaxError || /^2[23]/.test(err.code ?? '')) return badRequest(err.message ?? 'Bad request');

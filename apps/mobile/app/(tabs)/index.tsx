@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -7,13 +7,23 @@ import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { useToday } from '../../hooks/useToday';
+import { syncAll } from '../../services/connectors';
 
 const NA = '--';
+/** vitals.*_source holds the legacy label written by summaries_recompute. */
+const SRC: Record<string, string> = { apple_health: 'Apple Health', google_health: 'Google Health' };
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
 
 export default function HomeDashboard() {
   const router = useRouter();
-  const { loading, error, profile, goals, foods, waterMl, vitals, workouts } = useToday();
+  const { loading, error, profile, goals, foods, waterMl, vitals, workouts, refresh } = useToday();
+  const [pulling, setPulling] = useState(false);
+  const pull = async () => {
+    setPulling(true);
+    await syncAll({ force: true }).catch(() => undefined);
+    await refresh();
+    setPulling(false);
+  };
 
   if (loading && !goals && !profile) {
     return (
@@ -43,7 +53,7 @@ export default function HomeDashboard() {
     : NA;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
       <View style={styles.header}>
         <View>
           <Text style={Typography.metricLabel}>
@@ -65,6 +75,11 @@ export default function HomeDashboard() {
           <Text style={Typography.caption}>
             {vitals ? `HRV: ${vitals.overnight_hrv_rmssd ?? NA}ms • RHR: ${vitals.resting_heart_rate ?? NA}` : 'Connect a wearable to sync'}
           </Text>
+          {!!(vitals?.hrv_source || vitals?.rhr_source) && (
+            <Text style={[Typography.caption, { color: Colors.textMuted }]}>
+              HRV{vitals.hrv_variant ? ` (${vitals.hrv_variant.toUpperCase()})` : ''} · {SRC[vitals.hrv_source] ?? NA} | RHR · {SRC[vitals.rhr_source] ?? NA}
+            </Text>
+          )}
         </GlassCard>
 
         <GlassCard style={styles.metricCard} borderColor="rgba(251, 191, 36, 0.15)">
@@ -88,6 +103,7 @@ export default function HomeDashboard() {
               : sleepMin !== null
               ? `Body age appears once vitals sync`
               : 'Sleep and body age appear once a wearable syncs'}
+            {vitals?.sleep_source ? ` • Sleep · ${SRC[vitals.sleep_source] ?? vitals.sleep_source}` : ''}
           </Text>
         </View>
       </GlassCard>

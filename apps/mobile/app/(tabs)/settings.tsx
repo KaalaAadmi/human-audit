@@ -14,18 +14,11 @@ import { CustomFoodModal } from '../../components/CustomFoodModal';
 import { RecipeBuilderModal, CustomRecipe } from '../../components/RecipeBuilderModal';
 import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
-import { NativeHealthBridge, FULL_HISTORY_DAYS } from '../../services/nativeHealthBridge';
 import { DEFAULT_REMINDER_START_MIN, DEFAULT_REMINDER_END_MIN, fmtMin, minToDate, scheduleWaterReminders } from '../../services/waterReminders';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 type LibraryTab = 'foods' | 'recipes';
-
-const SOURCE_LABEL: Record<string, string> = {
-  fitbit: 'Fitbit (Sense / Charge)',
-  apple_health: 'Apple HealthKit (Watch Series / Ultra)',
-  google_health: 'Google Health Connect (Pixel Watch / Wear OS)',
-};
 
 interface DayGoal {
   calories: number;
@@ -40,7 +33,6 @@ export default function SettingsScreen() {
   const [vitals, setVitals] = useState<any>(null);
   const [wearables, setWearables] = useState<WearableSettings>(DEFAULT_WEARABLES);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const priorities = [wearables.priority1, wearables.priority2, wearables.priority3];
 
   // Day of Week Macro Goals State
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('mon');
@@ -171,13 +163,6 @@ export default function SettingsScreen() {
     { key: 'sat', label: 'Sat', full: 'Saturday' },
     { key: 'sun', label: 'Sun', full: 'Sunday' },
   ];
-
-  const handleMovePriorityUp = (index: number) => {
-    if (index === 0) return;
-    const p = [...priorities];
-    [p[index - 1], p[index]] = [p[index], p[index - 1]];
-    saveWearables({ priority1: p[0], priority2: p[1], priority3: p[2] });
-  };
 
   const updateGoalField = (field: keyof DayGoal, value: string) => {
     const num = parseInt(value, 10) || 0;
@@ -531,31 +516,6 @@ export default function SettingsScreen() {
 
         </GlassCard>
 
-        {/* Wearable Deduplication Priority Engine */}
-        <View style={styles.sectionHeader}>
-          <Text style={Typography.cardTitle}>Wearable Deduplication Priority</Text>
-          <Text style={Typography.caption}>Hierarchy when wearing multiple devices simultaneously</Text>
-        </View>
-
-        <GlassCard style={{ marginBottom: Spacing.xl }}>
-          {priorities.map((item, index) => (
-            <View key={item} style={styles.priorityRow}>
-              <View style={styles.priorityNumberBadge}>
-                <Text style={styles.priorityNumberText}>{index + 1}</Text>
-              </View>
-              <Text style={[Typography.bodyText, { flex: 1, fontWeight: '700' }]}>{SOURCE_LABEL[item] ?? item}</Text>
-              {index > 0 && (
-                <Pressable style={styles.moveBtn} onPress={() => handleMovePriorityUp(index)}>
-                  <Text style={styles.moveBtnText}>▲ Up</Text>
-                </Pressable>
-              )}
-            </View>
-          ))}
-          <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: Spacing.sm }]}>
-            * Workouts with ≥50% time overlap are resolved in favor of the higher-ranked device.
-          </Text>
-        </GlassCard>
-
         {/* Water Reminder Window */}
         <View style={styles.sectionHeader}>
           <Text style={Typography.cardTitle}>Water Reminders</Text>
@@ -579,121 +539,22 @@ export default function SettingsScreen() {
           </Text>
         </GlassCard>
 
-        {/* Health Data Sources */}
+        {/* Health data sources: connection management lives on its own screens */}
         <View style={styles.sectionHeader}>
-          <Text style={Typography.cardTitle}>Health Data Sources</Text>
-          <Text style={Typography.caption}>Connect Apple Health or Google Health to sync 14 days of telemetry</Text>
+          <Text style={Typography.cardTitle}>Data Sources</Text>
+          <Text style={Typography.caption}>Apple Health, Health Connect and Google Health</Text>
         </View>
 
         <GlassCard style={{ marginBottom: Spacing.xl }}>
-          {/* Apple Health */}
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1, paddingRight: Spacing.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="heart-circle-outline" size={18} color={Colors.bioRose} />
-                <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Apple Health</Text>
-                {wearables.appleHealthConnected && (
-                  <View style={styles.connectedBadge}>
-                    <Text style={styles.connectedBadgeText}>Connected</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={Typography.caption}>
-                {wearables.appleHealthConnected
-                  ? 'Connected — all workouts, sleep, HRV & RHR synced'
-                  : 'Connect to sync your full Apple Health history'}
-              </Text>
+          <Pressable style={styles.toggleRow} onPress={() => router.push('/data-sources' as any)}>
+            <View style={{ flex: 1 }}>
+              <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Manage data sources</Text>
+              <Text style={Typography.caption}>Connect, sync and choose which source wins per metric</Text>
             </View>
-            <Switch
-              value={wearables.appleHealthConnected}
-              onValueChange={async (val) => {
-                await Haptics.selectionAsync();
-                if (val) {
-                  const granted = await NativeHealthBridge.requestPermissions('apple_health');
-                  if (granted) {
-                    saveWearables({ appleHealthConnected: true });
-                    const ok = await NativeHealthBridge.syncHealthTelemetry(FULL_HISTORY_DAYS, 'apple_health');
-                    const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
-                    setProfile(p);
-                    setVitals(v);
-                    Alert.alert(
-                      ok ? 'Apple Health Connected' : 'Sync failed',
-                      ok ? 'Synced your workouts, sleep and vitals from Apple Health.' : `Connected, but the sync did not finish: ${NativeHealthBridge.lastError || 'unknown error'}. Toggle Apple Health off and on to retry.`,
-                    );
-                  }
-                } else {
-                  saveWearables({ appleHealthConnected: false });
-                }
-              }}
-              trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioRose }}
-            />
-          </View>
-
-          <View style={{ height: 1, backgroundColor: Colors.borderMachined, marginVertical: Spacing.sm }} />
-
-          {/* Google Health Connect — Android only (Health Connect SDK is Android-only).
-              On iOS, Google Health writes to Apple HealthKit; use the Apple Health toggle above. */}
-          {Platform.OS === 'android' ? (
-            <View style={styles.toggleRow}>
-              <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="pulse-outline" size={18} color={Colors.bioGreen} />
-                  <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Google Health</Text>
-                  {wearables.healthConnectConnected && (
-                    <View style={styles.connectedBadge}>
-                      <Text style={styles.connectedBadgeText}>Connected</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={Typography.caption}>
-                  {wearables.healthConnectConnected
-                    ? 'Connected — 14-day HRV, RHR, sleep & workouts synced'
-                    : 'Connect to sync 14 days of Google Health telemetry'}
-                </Text>
-              </View>
-              <Switch
-                value={wearables.healthConnectConnected}
-                onValueChange={async (val) => {
-                  await Haptics.selectionAsync();
-                  if (val) {
-                    const granted = await NativeHealthBridge.requestPermissions('google_health');
-                    if (granted) {
-                      try {
-                        await saveWearables({ healthConnectConnected: true });
-                        await NativeHealthBridge.syncHealthTelemetry(14, 'google_health');
-                        const [p, v] = await Promise.all([SyncService.fetchUserProfile(), SyncService.fetchVitals()]);
-                        setProfile(p);
-                        setVitals(v);
-                        Alert.alert('Google Health Connected', 'Successfully connected and synced 14 days of vitals, sleep, and workouts.');
-                      } catch (err: any) {
-                        console.warn('[HEALTH_SYNC_ERR]', err);
-                        setWearables((prev) => ({ ...prev, healthConnectConnected: true }));
-                        Alert.alert('Google Health Connected', 'Synced local telemetry data successfully.');
-                      }
-                    }
-                  } else {
-                    saveWearables({ healthConnectConnected: false });
-                  }
-                }}
-                trackColor={{ false: Colors.surfaceHighlight, true: Colors.bioGreen }}
-              />
-            </View>
-          ) : (
-            <View style={{ paddingVertical: Spacing.xs }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="pulse-outline" size={18} color={Colors.textMuted} />
-                <Text style={[Typography.bodyText, { fontWeight: '700', color: Colors.textMuted }]}>Google Health</Text>
-              </View>
-              <Text style={[Typography.caption, { color: Colors.textMuted }]}>
-                On iOS, Google Health data is accessible via Apple Health above.
-              </Text>
-            </View>
-          )}
-
-          <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: Spacing.sm }]}>
-            First connect syncs 14 days of history; after that, daily delta on app open.
-          </Text>
+            <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+          </Pressable>
         </GlassCard>
+
 
         {/* Smart Scale Connectors */}
         <View style={styles.sectionHeader}>
@@ -1020,38 +881,6 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 4,
   },
-  priorityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderMachined,
-    gap: Spacing.sm,
-  },
-  priorityNumberBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.surfaceHighlight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priorityNumberText: {
-    color: Colors.bioGreen,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  moveBtn: {
-    backgroundColor: Colors.surfaceHighlight,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  moveBtnText: {
-    color: Colors.textPure,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   timeChip: {
     flex: 1,
@@ -1081,19 +910,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  connectedBadge: {
-    backgroundColor: 'rgba(52, 211, 153, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.3)',
-  },
-  connectedBadgeText: {
-    color: Colors.bioGreen,
-    fontSize: 10,
-    fontWeight: '700',
   },
   baselineCard: {
     backgroundColor: 'rgba(52, 211, 153, 0.04)',

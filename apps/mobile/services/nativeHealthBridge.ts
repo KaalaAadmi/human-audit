@@ -92,7 +92,7 @@ export const NativeHealthBridge = {
           toRead: [
             'HKQuantityTypeIdentifierHeartRate',
             'HKQuantityTypeIdentifierRestingHeartRate',
-            'HKQuantityTypeIdentifierHeartRateVariabilityRMSSD',
+            'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
             'HKCategoryTypeIdentifierSleepAnalysis',
             'HKWorkoutTypeIdentifier',
             'HKQuantityTypeIdentifierActiveEnergyBurned',
@@ -296,7 +296,8 @@ export const NativeHealthBridge = {
       const [workoutSamples, rhrSamples, hrvSamples, sleepSamples] = await Promise.all([
         HK.queryWorkoutSamples({ filter, limit: -1, ascending: true }).catch(() => []),
         HK.queryQuantitySamples('HKQuantityTypeIdentifierRestingHeartRate', { ...qs, unit: 'count/min' }).catch(() => []),
-        HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRateVariabilityRMSSD', { ...qs, unit: 'ms' }).catch(() => []),
+        // Apple Watch writes SDNN only; HealthKit has no RMSSD type, so the old query always returned nothing.
+        HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRateVariabilitySDNN', { ...qs, unit: 'ms' }).catch(() => []),
         HK.queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', qs).catch(() => []),
       ]);
 
@@ -304,7 +305,7 @@ export const NativeHealthBridge = {
       const rhrByDate: Record<string, number> = {};
       for (const r of rhrSamples) rhrByDate[localDate(r.startDate as Date)] = r.quantity;
 
-      // --- HRV per local date (mean RMSSD) ---
+      // --- HRV per local date (mean SDNN) ---
       const hrvSumByDate: Record<string, { sum: number; count: number }> = {};
       for (const r of hrvSamples) {
         const d = localDate(r.startDate as Date);

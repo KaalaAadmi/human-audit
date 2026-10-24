@@ -9,9 +9,12 @@
     "@react-native-community/datetimepicker": "9.1.0",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.31",
+    "expo-background-task": "~57.0.21",
+    "expo-build-properties": "~57.0.22",
     "expo-camera": "~57.0.6",
     "expo-constants": "~57.0.22",
     "expo-dev-client": "~57.0.20",
+    "expo-device": "~57.0.2",
     "expo-haptics": "~57.0.3",
     "expo-linking": "~57.0.13",
     "expo-local-authentication": "^57.0.3",
@@ -21,6 +24,8 @@
     "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
+    "expo-task-manager": "~57.0.21",
+    "expo-web-browser": "~57.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -34,13 +39,15 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "lint": "expo lint"
   },
   "overrides": {
     "react": "19.2.3",

@@ -8,6 +8,7 @@ import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { useToday } from '../../hooks/useToday';
 import { syncAll } from '../../services/connectors';
+import { SyncBanner } from '../../components/SyncBanner';
 
 const NA = '--';
 /** vitals.*_source holds the legacy label written by summaries_recompute. */
@@ -66,6 +67,7 @@ export default function HomeDashboard() {
         </TouchableOpacity>
       </View>
 
+      <SyncBanner onDone={refresh} />
       {error && <Text style={[Typography.caption, { color: Colors.strain, marginBottom: Spacing.md }]}>Couldn't reach the server: {error}</Text>}
 
       <View style={styles.dualGrid}>

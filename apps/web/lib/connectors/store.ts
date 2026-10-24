@@ -138,7 +138,8 @@ export async function putCursor(userId: string, connectionId: string, metric: st
 
 // ---------- ingest ----------
 export const MAX_SAMPLES = 1000;
-const FUTURE_SKEW_MS = 5 * 60_000;
+// 15 h: daily records are pinned to 00:00Z of the user's local date, which is up to 14 h ahead of UTC "now" for UTC+14.
+const FUTURE_SKEW_MS = 15 * 3_600_000;
 
 function validate(s: SampleInput, now: number): void {
   if (!isMetric(s.metric)) throw new HttpError(400, `unknown metric ${String(s.metric)}`);

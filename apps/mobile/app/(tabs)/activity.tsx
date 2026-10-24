@@ -7,6 +7,7 @@ import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { useToday } from '../../hooks/useToday';
 import { syncAll } from '../../services/connectors';
+import { SyncBanner } from '../../components/SyncBanner';
 
 // ponytail: zone percentage ranges are placeholders until the zone boundaries are decided (see docs/PRD.md).
 const ZONES = [
@@ -25,7 +26,7 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
 
 const prettyType = (t: string) => String(t).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-function WorkoutCard({ w, active, onPress }: { w: any; active: boolean; onPress: () => void }) {
+function WorkoutCard({ w, active, onPress, expanded = false }: { w: any; active: boolean; onPress: () => void; expanded?: boolean }) {
   const badge = SOURCE_BADGE[w.source] ?? { label: String(w.source).toUpperCase(), color: Colors.textMuted };
   return (
     <Pressable onPress={onPress}>
@@ -51,15 +52,33 @@ function WorkoutCard({ w, active, onPress }: { w: any; active: boolean; onPress:
             <Text style={Typography.caption}>AVG HR</Text>
             <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{w.avg_heart_rate ?? '--'} bpm</Text>
           </View>
-          <View style={styles.telemetryItem}>
-            <Text style={Typography.caption}>MAX HR</Text>
-            <Text style={[Typography.bodyMono, { color: Colors.bioRose }]}>{w.max_heart_rate ?? '--'} bpm</Text>
-          </View>
+          {w.max_heart_rate != null && ( // Google Health exercises carry no max HR
+            <View style={styles.telemetryItem}>
+              <Text style={Typography.caption}>MAX HR</Text>
+              <Text style={[Typography.bodyMono, { color: Colors.bioRose }]}>{w.max_heart_rate} bpm</Text>
+            </View>
+          )}
           <View style={styles.telemetryItem}>
             <Text style={Typography.caption}>ACTIVE BURN</Text>
             <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{w.active_calories} kcal</Text>
           </View>
         </View>
+        {expanded && (
+          <View style={styles.telemetryRow}>
+            <View style={styles.telemetryItem}>
+              <Text style={Typography.caption}>START</Text>
+              <Text style={Typography.bodyMono}>{w.start_time ? new Date(w.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}</Text>
+            </View>
+            <View style={styles.telemetryItem}>
+              <Text style={Typography.caption}>END</Text>
+              <Text style={Typography.bodyMono}>{w.end_time ? new Date(w.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}</Text>
+            </View>
+            <View style={styles.telemetryItem}>
+              <Text style={Typography.caption}>DURATION</Text>
+              <Text style={Typography.bodyMono}>{Math.floor(w.duration_seconds / 60)}m {w.duration_seconds % 60}s</Text>
+            </View>
+          </View>
+        )}
       </GlassCard>
     </Pressable>
   );
@@ -75,6 +94,7 @@ export default function ActivityScreen() {
     setPulling(false);
   };
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openPrev, setOpenPrev] = useState<string | null>(null);
 
   if (loading) return <View style={[styles.container, { justifyContent: 'center' }]}><ActivityIndicator color={Colors.bioGreen} /></View>;
 
@@ -96,6 +116,7 @@ export default function ActivityScreen() {
           )}
         </View>
 
+        <SyncBanner onDone={refresh} />
         {error && <Text style={[Typography.caption, { color: Colors.bioRose, marginBottom: Spacing.md }]}>Couldn't load activity: {error}</Text>}
 
         <GlassCard style={styles.strainCard}>
@@ -155,7 +176,7 @@ export default function ActivityScreen() {
           <Text style={Typography.caption}>Synced from your wearable • most recent first</Text>
         </View>
         {recentWorkouts.length > 0
-          ? recentWorkouts.map(w => <WorkoutCard key={w.id} w={w} active={false} onPress={() => {}} />)
+          ? recentWorkouts.map(w => <WorkoutCard key={w.id} w={w} active={openPrev === w.id} expanded={openPrev === w.id} onPress={() => { Haptics.selectionAsync(); setOpenPrev(openPrev === w.id ? null : w.id); }} />)
           : <Text style={[Typography.caption, { marginBottom: Spacing.md }]}>No previous workouts yet.</Text>}
       </ScrollView>
     </View>

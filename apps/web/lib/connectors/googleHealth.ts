@@ -98,13 +98,15 @@ const num = (s: string | number | undefined) => (s === undefined ? NaN : Number(
 const GH = { originApp: 'google_health' } as const;
 const base = { originApp: GH.originApp, originDevice: null };
 
-/** Daily records carry only a date: pin to local noon so any offset keeps it on that date. */
-const noon = (date: string) => ({ startAt: `${date}T12:00:00.000Z`, endAt: `${date}T12:00:00.000Z`, tzOffsetMinutes: 0 });
+/** Daily records carry only a date: pin to 00:00Z with offset 0 so the day is that date and today's value is never "in the future". */
+const noon = (date: string) => ({ startAt: `${date}T00:00:00.000Z`, endAt: `${date}T00:00:00.000Z`, tzOffsetMinutes: 0 });
 
 const STAGE_KEY: Record<string, 'deep' | 'rem' | 'light' | 'awake'> = { DEEP: 'deep', REM: 'rem', LIGHT: 'light', ASLEEP: 'light', RESTLESS: 'awake', AWAKE: 'awake' };
 
 export function mapPoint(metric: Metric, p: any): SampleInput | null {
-  const id = String(p.dataPointName ?? '');
+  // Daily types (hrv, resting_hr) are not identifiable: `name` is empty, so key them by date.
+  const dailyDate = p.dailyHeartRateVariability?.date ?? p.dailyRestingHeartRate?.date;
+  const id = String(p.name || p.dataPointName || (dailyDate ? `${metric}:${ymd(dailyDate)}` : ''));
   switch (metric) {
     case 'sleep': {
       const s = p.sleep;

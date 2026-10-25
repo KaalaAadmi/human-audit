@@ -182,6 +182,11 @@ export const SyncService = {
     return (await api(`/api/sleep?date=${date}`)).sleep ?? null;
   },
 
+  /** Synced weight readings (kg), oldest first. */
+  async fetchWeightHistory(): Promise<{ date: string; kg: number }[]> {
+    return (await api('/api/weight')).weights ?? [];
+  },
+
   async saveVitals(vitalsData: Record<string, unknown> | Array<Record<string, unknown>>) {
     // INTEGER columns reject floats like 92.0000000000001; computed scores and HealthKit HR can be fractional.
     const INT_COLS = ['sleep_score', 'sleep_need_seconds', 'sleep_debt_seconds', 'sleep_efficiency_pct', 'sleep_duration_seconds',

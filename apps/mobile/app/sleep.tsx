@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { Spacing } from '../theme/spacing';
 import { GlassCard } from '../components/GlassCard';
 import { SyncService } from '../services/syncService';
+import { syncAll } from '../services/connectors';
 import { SOURCE_BADGE } from '../components/WorkoutCard';
 
 type Stage = 'awake' | 'rem' | 'light' | 'deep';
@@ -38,20 +39,29 @@ const merge = (segs: Segment[]) =>
 
 const scoreLabel = (s: number) => (s >= 85 ? 'Excellent' : s >= 70 ? 'Good' : s >= 50 ? 'Fair' : 'Poor');
 
-function Hypnogram({ segs, start, end }: { segs: Segment[]; start: number; end: number }) {
+const ROW_H = 44;
+const mins = (g: Segment) => Math.max(1, Math.round((Date.parse(g.end) - Date.parse(g.start)) / 60000));
+
+function Hypnogram({ segs, start, end, selected, onSelect }: { segs: Segment[]; start: number; end: number; selected: number | null; onSelect: (i: number | null) => void }) {
   const span = Math.max(1, end - start);
-  const rowH = 30;
+  const [w, setW] = useState(0);
+  // Tap anywhere on the chart: pick the block covering that moment (blocks are sequential), so thin blocks stay tappable.
+  const pick = (x: number) => {
+    const t = start + (x / Math.max(1, w)) * span;
+    const i = segs.findIndex((g) => t >= Date.parse(g.start) && t < Date.parse(g.end));
+    onSelect(i < 0 || i === selected ? null : i);
+  };
   return (
     <View>
-      <View style={{ height: rowH * STAGES.length }}>
-        {STAGES.map((s, i) => <View key={s.key} style={[styles.lane, { top: i * rowH, height: rowH }]} />)}
+      <Pressable style={{ height: ROW_H * STAGES.length }} onLayout={(e) => setW(e.nativeEvent.layout.width)} onPress={(e) => pick(e.nativeEvent.locationX)}>
+        {STAGES.map((s, i) => <View key={s.key} style={[styles.lane, { top: i * ROW_H, height: ROW_H }]} />)}
         {segs.map((g, i) => {
           const row = STAGES.findIndex((s) => s.key === g.stage);
           const left = ((Date.parse(g.start) - start) / span) * 100;
           const width = Math.max(0.4, ((Date.parse(g.end) - Date.parse(g.start)) / span) * 100);
-          return <View key={i} style={{ position: 'absolute', top: row * rowH + 4, height: rowH - 8, left: `${left}%`, width: `${width}%`, borderRadius: 3, backgroundColor: COLOR[g.stage] }} />;
+          return <View key={i} pointerEvents="none" style={{ position: 'absolute', top: row * ROW_H + 6, height: ROW_H - 12, left: `${left}%`, width: `${width}%`, borderRadius: 3, backgroundColor: COLOR[g.stage], opacity: selected === null || selected === i ? 1 : 0.35 }} />;
         })}
-      </View>
+      </Pressable>
       <View style={styles.axis}>
         <Text style={Typography.caption}>{hm(new Date(start).toISOString())}</Text>
         <Text style={Typography.caption}>{hm(new Date(end).toISOString())}</Text>
@@ -64,10 +74,12 @@ export default function Sleep() {
   const router = useRouter();
   const [data, setData] = useState<any>(undefined); // undefined = loading, null = no sleep yet
   const [error, setError] = useState<string | null>(null);
+  const [sel, setSel] = useState<number | null>(null);
 
-  useEffect(() => {
-    SyncService.fetchSleep().then(setData).catch((e) => { setError(e.message); setData(null); });
-  }, []);
+  const load = useCallback(() => SyncService.fetchSleep().then((d) => { setData(d); setError(null); }).catch((e) => { setError(e.message); setData((p: any) => p ?? null); }), []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const [pulling, setPulling] = useState(false);
+  const pull = async () => { setPulling(true); await syncAll({ force: true }).catch(() => undefined); await load(); setPulling(false); };
 
   const v = data?.vitals ?? {};
   const asleep = Number(v.sleep_duration_seconds) || 0;
@@ -88,7 +100,7 @@ export default function Sleep() {
       </View>
 
       {data === undefined ? <ActivityIndicator color={Colors.bioLavender} style={{ marginTop: Spacing.xl }} /> : (
-        <ScrollView contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.md }}>
+        <ScrollView contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.md }} alwaysBounceVertical refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
           {error && <Text style={[Typography.caption, { color: Colors.bioRose }]}>Couldn't load sleep: {error}</Text>}
           {data === null ? (
             !error && <Text style={Typography.caption}>No sleep yet. Connect Apple Health or Google Health in System → Data sources.</Text>
@@ -119,10 +131,15 @@ export default function Sleep() {
                   <>
                     <View style={styles.hypRow}>
                       <View style={styles.hypLabels}>
-                        {STAGES.map((s) => <Text key={s.key} style={[Typography.caption, { height: 30, lineHeight: 30, color: s.color }]}>{s.label}</Text>)}
+                        {STAGES.map((s) => <Text key={s.key} style={[Typography.caption, { height: ROW_H, lineHeight: ROW_H, color: s.color }]}>{s.label}</Text>)}
                       </View>
-                      <View style={{ flex: 1 }}><Hypnogram segs={segs} start={Date.parse(data.start)} end={Date.parse(data.end)} /></View>
+                      <View style={{ flex: 1 }}><Hypnogram segs={blocks} selected={sel} onSelect={setSel} start={Date.parse(data.start)} end={Date.parse(data.end)} /></View>
                     </View>
+                    {sel !== null && blocks[sel] ? (
+                      <Text style={[Typography.bodyMono, { color: COLOR[blocks[sel].stage], marginTop: Spacing.sm }]}>
+                        {LABEL[blocks[sel].stage]} • {hm(blocks[sel].start)} – {hm(blocks[sel].end)} • {mins(blocks[sel])} min
+                      </Text>
+                    ) : <Text style={[Typography.caption, { marginTop: Spacing.sm }]}>Tap the chart to see when each stage started and ended.</Text>}
                   </>
                 ) : <Text style={Typography.caption}>This source only reports stage totals, not a timeline.</Text>}
               </GlassCard>
@@ -168,7 +185,7 @@ export default function Sleep() {
                       <View key={i} style={styles.tl}>
                         <View style={[styles.dot, { backgroundColor: COLOR[b.stage] }]} />
                         <Text style={[Typography.bodyText, { flex: 1, color: Colors.textPrimary }]}>{LABEL[b.stage]}</Text>
-                        <Text style={Typography.caption}>{hm(b.start)} • {Math.max(1, Math.round((Date.parse(b.end) - Date.parse(b.start)) / 60000))} min</Text>
+                        <Text style={Typography.caption}>{hm(b.start)} • {mins(b)} min</Text>
                       </View>
                     ))}
                   </GlassCard>

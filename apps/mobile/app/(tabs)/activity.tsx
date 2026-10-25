@@ -28,8 +28,8 @@ export default function ActivityScreen() {
   if (loading) return <View style={[styles.container, { justifyContent: 'center' }]}><ActivityIndicator color={Colors.bioGreen} /></View>;
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: Spacing.lg }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textPure} />}>
         <View style={styles.header}>
           <Text style={[Typography.heroTitle, { flex: 1 }]} numberOfLines={1} adjustsFontSizeToFit>Activity & Strain</Text>
           {(vitals || workouts.length > 0) && (

@@ -29,6 +29,8 @@ export const POST = withAuth(async (req, userId) => {
   const body = await req.json();
   // numeric(5,1) column; 40-200 cm also rejects typos like 8.2 or 820.
   if (body.waist_cm != null && !(Number(body.waist_cm) >= 40 && Number(body.waist_cm) <= 200)) return badRequest('waist_cm must be between 40 and 200');
+  // numeric(5,2) column; 20-400 kg rejects typos like 7.5 or 750 (lbs entered as kg is still a client concern).
+  if (body.weight_kg != null && !(Number(body.weight_kg) >= 20 && Number(body.weight_kg) <= 400)) return badRequest('weight_kg must be between 20 and 400');
   const cols = FIELDS.filter((f) => body[f] !== undefined);
   const vals = cols.map((f) => body[f]);
 

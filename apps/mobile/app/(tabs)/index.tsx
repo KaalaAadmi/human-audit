@@ -46,7 +46,7 @@ export default function HomeDashboard() {
   const bodyAge = b?.bodyAge ?? null;
   const ageDelta = b?.delta ?? null;
 
-  const rawWeight = vitals?.scale_weight_kg ?? profile?.weight_kg;
+  const rawWeight = profile?.weight_kg ?? vitals?.scale_weight_kg;
   const numWeight = rawWeight !== undefined && rawWeight !== null ? parseFloat(String(rawWeight)) : null;
   const displayWeight = numWeight && !isNaN(numWeight) && numWeight > 0 ? `${numWeight.toFixed(1)} kg` : NA;
   const readinessText = vitals?.readiness_score !== undefined && vitals?.readiness_score !== null
@@ -56,7 +56,9 @@ export default function HomeDashboard() {
     : NA;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing.lg }]} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
+    // The wrapper keeps the scroll view below the status bar/notch, otherwise the pull-to-refresh spinner renders underneath it.
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <ScrollView alwaysBounceVertical contentContainerStyle={[styles.content, { paddingTop: Spacing.lg }]} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textPure} />}>
       <View style={styles.header}>
         <View>
           <Text style={Typography.metricLabel}>
@@ -81,11 +83,13 @@ export default function HomeDashboard() {
           </Text>
         </GlassCard>
 
-        <GlassCard style={styles.metricCard} borderColor="rgba(251, 191, 36, 0.15)">
-          <Text style={Typography.metricLabel}>Day Strain</Text>
-          <Text style={[styles.bigMetric, { color: Colors.strain }]}>{vitals?.day_strain ? Number(vitals.day_strain).toFixed(1) : NA}</Text>
-          <Text style={[Typography.caption, { color: Colors.strain }]}>{vitals ? `${workouts.length} workout(s) today` : 'No data yet'}</Text>
-        </GlassCard>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.8} onPress={() => router.push('/activity')}>
+          <GlassCard style={styles.metricCard} borderColor="rgba(251, 191, 36, 0.15)">
+            <Text style={Typography.metricLabel}>Day Strain</Text>
+            <Text style={[styles.bigMetric, { color: Colors.strain }]}>{vitals?.day_strain ? Number(vitals.day_strain).toFixed(1) : NA}</Text>
+            <Text style={[Typography.caption, { color: Colors.strain }]}>{vitals ? `${workouts.length} workout(s) today` : 'No data yet'}</Text>
+          </GlassCard>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/body-age' as any)}>
@@ -151,15 +155,18 @@ export default function HomeDashboard() {
           </GlassCard>
         </TouchableOpacity>
 
-        <GlassCard style={styles.subCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="scale-outline" size={12} color={Colors.textMuted} />
-            <Text style={Typography.metricLabel}>Weight</Text>
-          </View>
-          <Text style={styles.subMetric}>{displayWeight}</Text>
-        </GlassCard>
+        <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push('/weight' as any)}>
+          <GlassCard style={styles.subCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="scale-outline" size={12} color={Colors.textMuted} />
+              <Text style={Typography.metricLabel}>Weight</Text>
+            </View>
+            <Text style={styles.subMetric}>{displayWeight}</Text>
+          </GlassCard>
+        </TouchableOpacity>
       </View>
     </ScrollView>
+    </View>
   );
 }
 
@@ -169,6 +176,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.canvas,
   },
   content: {
+    flexGrow: 1, // content fills the screen, so empty space below the cards is part of the scrollable area
     padding: Spacing.xl,
     paddingTop: 50,
   },

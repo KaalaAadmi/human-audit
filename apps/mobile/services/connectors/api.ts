@@ -88,5 +88,5 @@ export const disconnectConnection = (id: string, deleteData: boolean) =>
 export const startGoogleHealth = async (deviceId: string) =>
   (await api<{ authUrl: string }>('/api/v1/connections/google-health/start', { method: 'POST', body: { deviceId } })).authUrl;
 
-/** Asks the server to fetch Google Health now (202, queued). */
-export const requestServerSync = () => api('/api/v1/sync', { method: 'POST' });
+/** Asks the server to fetch Google Health now; returns once it has fetched and recomputed (up to ~30 s). */
+export const requestServerSync = () => api('/api/v1/sync', { method: 'POST', timeoutMs: 35000 });

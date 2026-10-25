@@ -40,12 +40,13 @@ export default function SettingsScreen() {
   // Server-backed state (loaded on mount; null/empty until then)
   const [profile, setProfile] = useState<any>(null);
   const [waistDraft, setWaistDraft] = useState<string | null>(null); // null = not editing
+  const [weightDraft, setWeightDraft] = useState<string | null>(null);
   const [vitals, setVitals] = useState<any>(null);
   const [wearables, setWearables] = useState<WearableSettings>(DEFAULT_WEARABLES);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Day of Week Macro Goals State
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('mon');
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => (['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const)[new Date().getDay()]);
   const [goalsSavedNotification, setGoalsSavedNotification] = useState(false);
   const [dayGoals, setDayGoals] = useState<Record<DayOfWeek, DayGoal>>({
     mon: DEFAULT_GOALS, tue: DEFAULT_GOALS, wed: DEFAULT_GOALS, thu: DEFAULT_GOALS, fri: DEFAULT_GOALS, sat: DEFAULT_GOALS, sun: DEFAULT_GOALS,
@@ -128,14 +129,17 @@ export default function SettingsScreen() {
     ).catch(e => console.warn('[REMINDER_ERR]', e));
   };
 
-  const saveWaist = () => {
-    const cm = Number(waistDraft?.replace(',', '.'));
-    if (!(cm >= 40 && cm <= 200)) { Alert.alert('Invalid waist', 'Enter your waist circumference in cm, between 40 and 200.'); return; }
+  /** Validates a decimal draft, saves it to the profile, closes the editor. */
+  const saveBody = (draft: string | null, field: 'waist_cm' | 'weight_kg', min: number, max: number, unit: string, close: () => void, done: string) => {
+    const n = Number(draft?.replace(',', '.'));
+    if (!(n >= min && n <= max)) { Alert.alert('Invalid value', `Enter a number between ${min} and ${max} ${unit}.`); return; }
     Haptics.selectionAsync();
-    SyncService.updateUserProfile({ waist_cm: cm })
-      .then((p) => { setProfile(p); setWaistDraft(null); Alert.alert('Saved', 'Your body age and VO₂max update within a minute or two.'); })
-      .catch(fail('Could not save waist'));
+    SyncService.updateUserProfile({ [field]: n })
+      .then((p) => { setProfile(p); close(); Alert.alert('Saved', done); })
+      .catch(fail('Could not save'));
   };
+  const saveWaist = () => saveBody(waistDraft, 'waist_cm', 40, 200, 'cm', () => setWaistDraft(null), 'Your body age and VO₂max update within a minute or two.');
+  const saveWeight = () => saveBody(weightDraft, 'weight_kg', 20, 400, 'kg', () => setWeightDraft(null), 'Your weight is updated.');
 
   const editReminderTime = (which: 'start' | 'end') => {
     Haptics.selectionAsync();
@@ -249,7 +253,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <Text style={[Typography.heroTitle, { marginBottom: Spacing.md }]}>Profile & Settings</Text>
 
@@ -283,10 +287,10 @@ export default function SettingsScreen() {
             <View style={styles.biometricItem}>
               <Text style={Typography.caption}>WEIGHT</Text>
               <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>
-                {vitals?.scale_weight_kg
-                  ? `${Number(vitals.scale_weight_kg).toFixed(1)} kg`
-                  : profile?.weight_kg
+                {profile?.weight_kg
                   ? `${Number(profile.weight_kg).toFixed(1)} kg`
+                  : vitals?.scale_weight_kg
+                  ? `${Number(vitals.scale_weight_kg).toFixed(1)} kg`
                   : '--'}
               </Text>
             </View>
@@ -298,6 +302,32 @@ export default function SettingsScreen() {
               <Text style={Typography.caption}>RESTING HR</Text>
               <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{vitals?.resting_heart_rate ? `${vitals.resting_heart_rate} bpm` : '--'}</Text>
             </View>
+          </View>
+
+          <View style={styles.biometricsRow}>
+            {weightDraft === null ? (
+              <Pressable style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }} onPress={() => setWeightDraft(profile?.weight_kg ? String(Number(profile.weight_kg)) : '')}>
+                <View>
+                  <Text style={Typography.caption}>UPDATE WEIGHT</Text>
+                  <Text style={Typography.caption}>Enter it by hand, no scale needed</Text>
+                </View>
+                <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{profile?.weight_kg ? `${Number(profile.weight_kg).toFixed(1)} kg` : 'Add'}  ›</Text>
+              </Pressable>
+            ) : (
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                <TextInput
+                  style={styles.waistInput}
+                  value={weightDraft}
+                  onChangeText={setWeightDraft}
+                  keyboardType="decimal-pad"
+                  placeholder="Weight in kg, e.g. 72.5"
+                  placeholderTextColor={Colors.textMuted}
+                  autoFocus
+                />
+                <Pressable hitSlop={8} onPress={saveWeight}><Text style={{ color: Colors.bioGreen, fontWeight: '700' }}>Save</Text></Pressable>
+                <Pressable hitSlop={8} onPress={() => setWeightDraft(null)}><Text style={{ color: Colors.textMuted, fontWeight: '600' }}>Cancel</Text></Pressable>
+              </View>
+            )}
           </View>
 
           <View style={styles.biometricsRow}>

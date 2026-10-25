@@ -1,5 +1,7 @@
 # HumanAudit — Health Data Sources: PRD & Architecture
 
+> Setup runbook (Google Cloud, env vars, scheduler, webhook, troubleshooting): [`connectors-setup-guide.md`](./connectors-setup-guide.md).
+
 Oct 23, 2026 · @Arnav
 
 ## 1. Overview

@@ -71,6 +71,7 @@ const toCustomFood = (r: any): SearchFoodResult => ({
   carbsG: Number(r.carbs_g),
   fatG: Number(r.fats_g),
   source: 'custom',
+  mine: r.mine,
 });
 
 const toCustomRecipe = (r: any): CustomRecipe => {
@@ -89,6 +90,8 @@ const toCustomRecipe = (r: any): CustomRecipe => {
     totalProteinG: Number(r.total_protein_g),
     totalCarbsG: Number(r.total_carbs_g),
     totalFatG: Number(r.total_fats_g),
+    author: r.author,
+    mine: r.mine,
   };
 };
 
@@ -130,6 +133,10 @@ export const SyncService = {
   },
   async deleteCustomRecipe(id: string) {
     await api(`/api/custom-recipes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  /** Report someone else's shared food / recipe; it disappears for the reporter at once and for everyone after enough reports. */
+  async reportShared(kind: 'food' | 'recipe', id: string, reason: string) {
+    await api('/api/reports', { method: 'POST', body: { kind, id, reason } });
   },
 
   async fetchWearableSettings(): Promise<WearableSettings> {

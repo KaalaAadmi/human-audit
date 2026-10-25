@@ -147,6 +147,7 @@ import { pgTable, pgEnum, text, uuid, integer, smallint, numeric, boolean, times
     carbsG: numeric('carbs_g', { precision: 7, scale: 2 }).notNull(),
     fatsG: numeric('fats_g', { precision: 7, scale: 2 }).notNull(),
     barcode: text('barcode'),
+    hidden: boolean('hidden').default(false).notNull(), // set after enough reports (drizzle/0009)
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   }).enableRLS();
 
@@ -161,8 +162,19 @@ import { pgTable, pgEnum, text, uuid, integer, smallint, numeric, boolean, times
     totalCarbsG: numeric('total_carbs_g', { precision: 7, scale: 2 }).notNull(),
     totalFatsG: numeric('total_fats_g', { precision: 7, scale: 2 }).notNull(),
     ingredientsJson: jsonb('ingredients_json').notNull(),
+    hidden: boolean('hidden').default(false).notNull(), // set after enough reports (drizzle/0009)
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   }).enableRLS();
+
+  // 9b. Reports on shared foods / recipes (drizzle/0009_content_moderation.sql)
+  export const contentReports = pgTable('content_reports', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').references(() => userProfiles.id, { onDelete: 'set null' }), // null once the reporter deleted their account; the report still counts
+    kind: text('kind').notNull(), // 'food' | 'recipe'
+    itemId: uuid('item_id').notNull(),
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  }, (t) => ({ once: unique().on(t.userId, t.kind, t.itemId) })).enableRLS();
   // ---- Data connectors (docs/data-connectors.md section 5; SQL in drizzle/0008_data_connectors.sql) ----
   const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 

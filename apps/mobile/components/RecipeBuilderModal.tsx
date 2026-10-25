@@ -33,6 +33,8 @@ export interface CustomRecipe {
   totalProteinG: number;
   totalCarbsG: number;
   totalFatG: number;
+  author?: string; // recipes are shared; set by the server
+  mine?: boolean;
 }
 
 interface Props {

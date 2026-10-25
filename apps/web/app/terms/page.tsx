@@ -15,6 +15,10 @@ export default function TermsPage() {
           <h2 className="text-lg font-bold text-white mb-2">3. Third-party data</h2>
           <p>Food data comes from Open Food Facts and USDA FoodData Central and may be incomplete or inaccurate. Verify values against product labels.</p>
         </section>
+        <section>
+          <h2 className="text-lg font-bold text-white mb-2">4. Shared content</h2>
+          <p>Foods and recipes you create are shared with all users, and recipes show your display name. Only share content you have the right to share, and nothing unlawful, offensive or misleading. Users can report items; an item that is reported by several users is hidden, and we may remove content or accounts that break these terms.</p>
+        </section>
       </div>
     </div>
   );

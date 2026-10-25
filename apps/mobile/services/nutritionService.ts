@@ -28,6 +28,7 @@ export interface SearchFoodResult {
   fatG: number;
   fiberG?: number;
   source: 'usda' | 'openfoodfacts' | 'custom';
+  mine?: boolean; // custom foods are shared; only the creator can delete
 }
 
 // All methods throw on network/server failure (callers show the error); there is no canned offline data.

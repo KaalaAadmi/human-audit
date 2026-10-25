@@ -161,6 +161,17 @@ ALTER TABLE daily_vitals_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wearable_settings ENABLE ROW LEVEL SECURITY;
 ```
 
+### Shared foods and recipes (migration `0009_content_moderation.sql`)
+
+`custom_foods` and `custom_recipes` are readable by every user (foods by name only, recipes with the author's `display_name`); only the owner can delete. Moderation:
+
+| Column / table | Purpose |
+|---|---|
+| `custom_foods.hidden`, `custom_recipes.hidden` | Set by `POST /api/reports` once 3 distinct users reported the item. A hidden item stays visible to its author only. |
+| `content_reports` | One row per (`user_id`, `kind` = `food`/`recipe`, `item_id`), with the `reason` the reporter picked. A reporter stops seeing the item immediately. When the reporter deletes their account `user_id` becomes null, so the report keeps counting toward the threshold. |
+
+Review: `SELECT * FROM custom_foods WHERE hidden;`. Restore: `UPDATE ... SET hidden = false` and delete the item's `content_reports` rows. There is no admin UI.
+
 ### Data connectors (migration `0008_data_connectors.sql`)
 
 Design: [`data-connectors.md`](./data-connectors.md). The full DDL is in `packages/db/drizzle/0008_data_connectors.sql`; this is the map.

@@ -21,6 +21,13 @@ export default function PrivacyPage() {
             </p>
           </section>
           <section>
+            <h2 className="text-lg font-bold text-white mb-2">Shared foods and recipes</h2>
+            <p>
+              Custom foods and recipes you create are visible to all HumanAudit users. A food is shown by its name only. A recipe is shown with your display name as its author. Do not put personal information in names or ingredients.
+              You can delete your own items at any time, which removes them for everyone. Your health, workout, sleep and diary data is never shared.
+            </p>
+          </section>
+          <section>
             <h2 className="text-lg font-bold text-white mb-2">2. Data Isolation & Security</h2>
             <p>
               All data stored in our cloud backend is encrypted in transit and at rest. Every request is authenticated with your Clerk session, and the server only ever reads and writes the signed-in user's own records.

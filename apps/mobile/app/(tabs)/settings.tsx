@@ -17,8 +17,12 @@ import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
 import { DEFAULT_REMINDER_START_MIN, DEFAULT_REMINDER_END_MIN, fmtMin, minToDate, scheduleWaterReminders } from '../../services/waterReminders';
 import { SourceOrder, useSourcePrefs } from '../../components/SourceOrder';
+import { Sheet } from '../../components/Sheet';
 import { bodyAgeFor } from '../../services/bodyAge';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
+
+/** [value sent to POST /api/reports, label]; the server keeps only these values. */
+const REPORT_REASONS = [['offensive', 'Offensive or inappropriate'], ['wrong_values', 'Wrong nutrition values'], ['spam', 'Spam or duplicate'], ['other', 'Something else']] as const;
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 type LibraryTab = 'foods' | 'recipes';
@@ -55,6 +59,14 @@ export default function SettingsScreen() {
   const [customRecipes, setCustomRecipes] = useState<CustomRecipe[]>([]);
 
   const fail = (what: string) => (e: unknown) => Alert.alert(what, (e as Error).message);
+  // Item being reported; the sheet asks for a reason (a sheet, not Alert.alert: Android alerts have no choices).
+  const [reporting, setReporting] = useState<{ kind: 'food' | 'recipe'; id: string; hide: () => void } | null>(null);
+  const report = (kind: 'food' | 'recipe', id: string, hide: () => void) => setReporting({ kind, id, hide });
+  const sendReport = (reason: string) => {
+    const r = reporting;
+    setReporting(null);
+    if (r) SyncService.reportShared(r.kind, r.id, reason).then(r.hide).catch(fail('Could not report'));
+  };
 
   useEffect(() => {
     // custom_foods / custom_recipes tables may not exist until migrations are applied — fetch them
@@ -463,7 +475,7 @@ export default function SettingsScreen() {
           {activeLibTab === 'foods' && (
             <View style={{ marginTop: Spacing.md }}>
               <View style={styles.libActionHeader}>
-                <Text style={Typography.statLabel}>USER-DEFINED FOODS</Text>
+                <Text style={Typography.statLabel}>SHARED FOODS</Text>
                 <Pressable
                   style={styles.addLibBtn}
                   onPress={() => {
@@ -490,16 +502,22 @@ export default function SettingsScreen() {
                     <Text style={[Typography.bodyMono, { color: Colors.textPure, fontWeight: '700' }]}>
                       {food.calories} kcal
                     </Text>
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setCustomFoods(prev => prev.filter(f => f.id !== food.id));
-                        SyncService.deleteCustomFood(food.id).catch(fail('Could not delete'));
-                      }}
-                      hitSlop={10}
-                    >
-                      <Text style={{ color: Colors.bioRose, fontSize: 12, marginTop: 4 }}>Delete</Text>
-                    </Pressable>
+                    {food.mine ? (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setCustomFoods(prev => prev.filter(f => f.id !== food.id));
+                          SyncService.deleteCustomFood(food.id).catch(fail('Could not delete'));
+                        }}
+                        hitSlop={10}
+                      >
+                        <Text style={{ color: Colors.bioRose, fontSize: 12, marginTop: 4 }}>Delete</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable hitSlop={10} onPress={() => report('food', food.id, () => setCustomFoods(prev => prev.filter(f => f.id !== food.id)))}>
+                        <Text style={{ color: Colors.textMuted, fontSize: 12, marginTop: 4 }}>Report</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </GlassCard>
               ))}
@@ -510,7 +528,7 @@ export default function SettingsScreen() {
           {activeLibTab === 'recipes' && (
             <View style={{ marginTop: Spacing.md }}>
               <View style={styles.libActionHeader}>
-                <Text style={Typography.statLabel}>MULTI-SERVING RECIPES</Text>
+                <Text style={Typography.statLabel}>SHARED RECIPES</Text>
                 <Pressable
                   style={styles.addLibBtn}
                   onPress={() => {
@@ -527,7 +545,7 @@ export default function SettingsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[Typography.bodyText, { fontWeight: '700' }]}>{recipe.name}</Text>
                     <Text style={Typography.caption}>
-                      {recipe.servingsCount} servings • {recipe.ingredients.length} ingredients
+                      by {recipe.author ?? 'Unknown'} • {recipe.servingsCount} servings • {recipe.ingredients.length} ingredients
                     </Text>
                     <View style={styles.itemMacroRow}>
                       <Text style={[Typography.caption, { color: Colors.bioGreen }]}>P: {recipe.perServingProteinG}g</Text>
@@ -539,16 +557,22 @@ export default function SettingsScreen() {
                     <Text style={[Typography.bodyMono, { color: Colors.bioGreen, fontWeight: '700' }]}>
                       {recipe.perServingCalories} <Text style={{ fontSize: 11, color: Colors.textMuted }}>kcal/serv</Text>
                     </Text>
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setCustomRecipes(prev => prev.filter(r => r.id !== recipe.id));
-                        SyncService.deleteCustomRecipe(recipe.id).catch(fail('Could not delete'));
-                      }}
-                      hitSlop={10}
-                    >
-                      <Text style={{ color: Colors.bioRose, fontSize: 12, marginTop: 4 }}>Delete</Text>
-                    </Pressable>
+                    {recipe.mine ? (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setCustomRecipes(prev => prev.filter(r => r.id !== recipe.id));
+                          SyncService.deleteCustomRecipe(recipe.id).catch(fail('Could not delete'));
+                        }}
+                        hitSlop={10}
+                      >
+                        <Text style={{ color: Colors.bioRose, fontSize: 12, marginTop: 4 }}>Delete</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable hitSlop={10} onPress={() => report('recipe', recipe.id, () => setCustomRecipes(prev => prev.filter(r => r.id !== recipe.id)))}>
+                        <Text style={{ color: Colors.textMuted, fontSize: 12, marginTop: 4 }}>Report</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </GlassCard>
               ))}
@@ -701,6 +725,17 @@ export default function SettingsScreen() {
         onClose={() => setShowAddRecipeModal(false)}
         onRecipeSaved={r => SyncService.createCustomRecipe(r).then(saved => setCustomRecipes(prev => [saved, ...prev])).catch(fail('Could not save recipe'))}
       />
+
+      <Sheet visible={reporting !== null} onClose={() => setReporting(null)} dim={0.6}>
+        <Text style={Typography.cardTitle}>Report this item</Text>
+        <Text style={[Typography.caption, { marginBottom: Spacing.md }]}>It is hidden from you now, and from everyone once several people report it.</Text>
+        {REPORT_REASONS.map(([key, label]) => (
+          <Pressable key={key} style={styles.reasonRow} onPress={() => sendReport(key)}>
+            <Text style={Typography.bodyText}>{label}</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+          </Pressable>
+        ))}
+      </Sheet>
 
       {/* iOS reminder time picker (Android uses the native dialog via DateTimePickerAndroid) */}
       <Modal visible={editingTime !== null} transparent animationType="fade" onRequestClose={() => setEditingTime(null)}>
@@ -937,6 +972,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.borderMachined },
   timeChip: {
     flex: 1,
     backgroundColor: Colors.surfaceSubtle,

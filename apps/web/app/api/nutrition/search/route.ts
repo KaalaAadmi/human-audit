@@ -106,13 +106,15 @@ export const GET = withAuth(async (req, userId) => {
 
   if (!query) return NextResponse.json({ results: [] });
 
-  // The user's own foods always lead (they are exact by definition).
+  // Foods added by any user are searchable (name only, no author); the caller's own lead.
   // Wrapped in try/catch: if the custom_foods table doesn't exist yet (migrations pending) we degrade
   // gracefully rather than returning a 500 for the whole search.
   let mine: FoodItem[] = [];
   try {
     mine = (
-      await sql(`SELECT * FROM custom_foods WHERE user_id = $1 AND name ILIKE $2 ORDER BY name LIMIT 5`, [userId, `%${query.replace(/[%_\\]/g, '\\$&')}%`])
+      await sql(`SELECT * FROM custom_foods f WHERE name ILIKE $2
+         AND (user_id = $1 OR (NOT hidden AND NOT EXISTS (SELECT 1 FROM content_reports c WHERE c.user_id = $1 AND c.kind = 'food' AND c.item_id = f.id)))
+         ORDER BY user_id = $1 DESC, name LIMIT 8`, [userId, `%${query.replace(/[%_\\]/g, '\\$&')}%`])
     ).map((r: any) => ({
       id: r.id, name: r.name, brand: r.brand ?? undefined, servingSize: `${Number(r.serving_size_g)}g`, servingGrams: Number(r.serving_size_g),
       calories: r.calories, proteinG: Number(r.protein_g), carbsG: Number(r.carbs_g), fatG: Number(r.fats_g), source: 'custom' as const,

@@ -192,7 +192,7 @@ async function projectVitals(userId: string, dates: string[], conns: ConnRow[]) 
     const readiness = h ? computeReadiness(hrvDays(h.variant, d)) : null;
     const isNewest = d === (newestRhr?.local_date ?? last);
     const fit = isNewest && r && profile?.waist_cm
-      ? computeFitnessAge({ age: (Date.now() - Date.parse(profile.chronological_birthdate)) / 31_557_600_000, sex: profile.sex === 'female' ? 'female' : 'male',
+      ? computeFitnessAge({ age: (Date.now() - Date.parse(profile.chronological_birthdate)) / 31_557_600_000, sex: profile.sex === 'female' || profile.sex === 'male' ? profile.sex : 'prefer_not_to_say',
           waistCm: Number(profile.waist_cm), restingHrBpm: r.value, huntPaIndex: 10 }) // ponytail: no hunt_pa_index column yet, 10 as before
       : null;
     await query(

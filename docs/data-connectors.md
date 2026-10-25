@@ -1002,8 +1002,22 @@ The code deviates from the design above in these places. Treat this section as a
 - HealthKit `deletedSamples` carry only `{ uuid }`.
 - Health Connect `getChanges` without a token only creates a token and returns an empty first response, so the adapter takes the token first, runs the windowed backfill, then stores the token.
 - Google `dailyRollUp` is chunked to 14 days. Google `heart_rate` is not synced in v1.
+- Google daily types (HRV, resting HR) carry no `dataPointName`, so their `originId` is `<metric>:<date>`.
+- `store.ts` rejects samples dated more than `FUTURE_SKEW_MS` (15 h) ahead of now, which covers the furthest-ahead timezone.
+- Google exercise `metricsSummary.heartRateZoneDurations` (light, moderate, vigorous, peak) maps to Z2..Z5. Z1 is the rest of the session. HealthKit has no zones, so the whole session counts as Z3.
+- Google sleep points keep their `stages[]` as `payload.segments` (`{stage, start, end}`, stages `awake|light|deep|rem`). `sleepSegments()` in `resolve.ts` returns the same shape for HealthKit / Health Connect segment rows.
 - Collector rule: one device per Apple ID / Google account collects; a second iPhone on the same Apple ID is a viewer.
 - Android package changed from `com.humanaudit.app` to `com.kaalaaadmi.humanaudit` to match iOS.
+
+**Projection into legacy tables**
+- `projectWorkouts` also marks legacy `workout_logs` rows (written by the pre-connector bridge, no matching sample) as `duplicate` when they overlap a connected-source workout by more than 80% of the shorter one. A connected source always wins over such an orphan.
+- `projectStrain` computes day strain from the zone seconds of the active `workout_logs` rows (TRIMP, weights 0.10 / 0.35 / 0.80 / 1.50 / 2.20 per minute), keyed by `start_time::date`.
+- `GET /api/vitals` returns the latest row on or before `?date=`, so sleep, HRV and resting HR can come from an earlier night. Strain is per day: when the row's date is not `?date=`, `day_strain` and `trimp_raw` come back as 0.
+- `GET /api/sleep?date=` returns one night (score, stages, segments) built by `sleepNight()` in `lib/connectors/sleep.ts`.
+
+**Body age**
+- The Body age page, Home card and System tab compute body age on the phone (`apps/mobile/services/bodyAge.ts`) from the profile (birthdate, sex, height, `waist_cm`) and the latest resting HR. `daily_vitals_summary.fitness_age` is no longer read by the UI.
+- `POST /api/profile` validates `waist_cm` (40 to 200) and enqueues a `summaries_recompute` when it changes. The activity index is fixed at 10 (no questionnaire yet).
 
 **Known gaps**
 - Webhook Tink signature is not verified (section 8).

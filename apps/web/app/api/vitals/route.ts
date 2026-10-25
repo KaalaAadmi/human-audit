@@ -10,6 +10,8 @@ export const GET = withAuth(async (req, userId) => {
     'SELECT * FROM daily_vitals_summary WHERE user_id = $1 AND summary_date <= $2 ORDER BY summary_date DESC LIMIT 1',
     [userId, date]
   );
+  // Sleep/HRV/RHR may fall back to the latest night, but strain is per-day: an older row's strain is not today's.
+  if (vitals && vitals.summary_date !== date) Object.assign(vitals, { day_strain: 0, trimp_raw: 0 });
   return NextResponse.json({ success: true, vitals: vitals ?? null });
 });
 

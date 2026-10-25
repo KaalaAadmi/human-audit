@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
-import { withAuth } from '../../../lib/route';
+import { badRequest, withAuth } from '../../../lib/route';
+import { enqueue } from '../../../lib/connectors/store';
 
 // Whitelist = the only column names that ever reach the SQL text.
 const FIELDS = [
@@ -26,13 +27,19 @@ export const GET = withAuth(async (_req, userId) => {
 /** Create or partially update the caller's profile. Creating needs every NOT NULL field (else 400). */
 export const POST = withAuth(async (req, userId) => {
   const body = await req.json();
+  // numeric(5,1) column; 40-200 cm also rejects typos like 8.2 or 820.
+  if (body.waist_cm != null && !(Number(body.waist_cm) >= 40 && Number(body.waist_cm) <= 200)) return badRequest('waist_cm must be between 40 and 200');
   const cols = FIELDS.filter((f) => body[f] !== undefined);
   const vals = cols.map((f) => body[f]);
 
   if (cols.length) {
     const set = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
     const [updated] = await query(`UPDATE user_profiles SET ${set}, updated_at = NOW() WHERE id = $1 RETURNING *`, [userId, ...vals]);
-    if (updated) return NextResponse.json({ success: true, profile: updated });
+    if (updated) {
+      // Fitness age / VO2max are derived from the waist: recompute so existing days pick it up.
+      if (cols.includes('waist_cm')) await enqueue('summaries_recompute', { userId, dates: null });
+      return NextResponse.json({ success: true, profile: updated });
+    }
   }
 
   const marks = cols.map((_, i) => `$${i + 2}`).join(', ');

@@ -17,6 +17,7 @@ import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
 import { DEFAULT_REMINDER_START_MIN, DEFAULT_REMINDER_END_MIN, fmtMin, minToDate, scheduleWaterReminders } from '../../services/waterReminders';
 import { SourceOrder, useSourcePrefs } from '../../components/SourceOrder';
+import { bodyAgeFor } from '../../services/bodyAge';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -34,6 +35,7 @@ export default function SettingsScreen() {
   const sourcePrefs = useSourcePrefs();
   // Server-backed state (loaded on mount; null/empty until then)
   const [profile, setProfile] = useState<any>(null);
+  const [waistDraft, setWaistDraft] = useState<string | null>(null); // null = not editing
   const [vitals, setVitals] = useState<any>(null);
   const [wearables, setWearables] = useState<WearableSettings>(DEFAULT_WEARABLES);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -112,6 +114,15 @@ export default function SettingsScreen() {
     scheduleWaterReminders(
       profile?.water_reminder_enabled ?? true, start, end, profile?.water_reminder_interval_mins || 90,
     ).catch(e => console.warn('[REMINDER_ERR]', e));
+  };
+
+  const saveWaist = () => {
+    const cm = Number(waistDraft?.replace(',', '.'));
+    if (!(cm >= 40 && cm <= 200)) { Alert.alert('Invalid waist', 'Enter your waist circumference in cm, between 40 and 200.'); return; }
+    Haptics.selectionAsync();
+    SyncService.updateUserProfile({ waist_cm: cm })
+      .then((p) => { setProfile(p); setWaistDraft(null); Alert.alert('Saved', 'Your body age and VO₂max update within a minute or two.'); })
+      .catch(fail('Could not save waist'));
   };
 
   const editReminderTime = (which: 'start' | 'end') => {
@@ -245,7 +256,7 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.bioAgePill}>
               <Text style={[Typography.caption, { color: Colors.bioGreen, fontWeight: '700' }]}>
-                BIO AGE: {vitals?.fitness_age ?? vitals?.body_age ? Number(vitals.fitness_age ?? vitals.body_age).toFixed(1) : '--'}
+                BIO AGE: {bodyAgeFor(profile, vitals).b?.bodyAge.toFixed(1) ?? '--'}
               </Text>
             </View>
           </View>
@@ -275,6 +286,32 @@ export default function SettingsScreen() {
               <Text style={Typography.caption}>RESTING HR</Text>
               <Text style={[Typography.bodyMono, { color: Colors.bioGreen }]}>{vitals?.resting_heart_rate ? `${vitals.resting_heart_rate} bpm` : '--'}</Text>
             </View>
+          </View>
+
+          <View style={styles.biometricsRow}>
+            {waistDraft === null ? (
+              <Pressable style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }} onPress={() => setWaistDraft(profile?.waist_cm ? String(Number(profile.waist_cm)) : '')}>
+                <View>
+                  <Text style={Typography.caption}>WAIST</Text>
+                  <Text style={Typography.caption}>Needed for VO₂max and body age</Text>
+                </View>
+                <Text style={[Typography.bodyMono, { color: Colors.textPure }]}>{profile?.waist_cm ? `${Number(profile.waist_cm)} cm` : 'Add'}  ›</Text>
+              </Pressable>
+            ) : (
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                <TextInput
+                  style={styles.waistInput}
+                  value={waistDraft}
+                  onChangeText={setWaistDraft}
+                  keyboardType="decimal-pad"
+                  placeholder="Waist in cm, e.g. 82"
+                  placeholderTextColor={Colors.textMuted}
+                  autoFocus
+                />
+                <Pressable hitSlop={8} onPress={saveWaist}><Text style={{ color: Colors.bioGreen, fontWeight: '700' }}>Save</Text></Pressable>
+                <Pressable hitSlop={8} onPress={() => setWaistDraft(null)}><Text style={{ color: Colors.textMuted, fontWeight: '600' }}>Cancel</Text></Pressable>
+              </View>
+            )}
           </View>
         </GlassCard>
 
@@ -746,6 +783,14 @@ const styles = StyleSheet.create({
   },
   biometricItem: {
     alignItems: 'center',
+  },
+  waistInput: {
+    flex: 1,
+    color: Colors.textPure,
+    backgroundColor: Colors.surfaceHighlight,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
   },
   sectionHeader: {
     marginBottom: Spacing.sm,

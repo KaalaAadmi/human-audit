@@ -10,6 +10,7 @@ import { GlassCard } from '../../components/GlassCard';
 import { useToday } from '../../hooks/useToday';
 import { syncAll } from '../../services/connectors';
 import { SyncBanner } from '../../components/SyncBanner';
+import { bodyAgeFor } from '../../services/bodyAge';
 
 const NA = '--';
 /** vitals.*_source holds the legacy label written by summaries_recompute. */
@@ -41,10 +42,9 @@ export default function HomeDashboard() {
   const targetCals = goals?.calories ?? null;
   const left = targetCals !== null ? targetCals - sum('calories') + burn : null;
   const sleepMin = vitals?.sleep_duration_seconds ? Math.round(vitals.sleep_duration_seconds / 60) : null;
-  const rawBodyAge = vitals?.fitness_age ?? vitals?.body_age;
-  const bodyAge = rawBodyAge !== undefined && rawBodyAge !== null ? Number(rawBodyAge) : null;
-  const age = profile?.chronological_birthdate ? (Date.now() - new Date(profile.chronological_birthdate).getTime()) / 31557600000 : null;
-  const ageDelta = bodyAge !== null && age !== null ? bodyAge - age : null;
+  const { b } = bodyAgeFor(profile, vitals);
+  const bodyAge = b?.bodyAge ?? null;
+  const ageDelta = b?.delta ?? null;
 
   const rawWeight = vitals?.scale_weight_kg ?? profile?.weight_kg;
   const numWeight = rawWeight !== undefined && rawWeight !== null ? parseFloat(String(rawWeight)) : null;
@@ -101,7 +101,7 @@ export default function HomeDashboard() {
             {ageDelta !== null
               ? `${Math.abs(ageDelta).toFixed(1)} yrs ${ageDelta <= 0 ? 'younger' : 'older'} than your age`
               : sleepMin !== null
-              ? `Body age appears once vitals sync`
+              ? `Add your waist in System to see body age`
               : 'Sleep and body age appear once a wearable syncs'}
             {vitals?.sleep_source ? ` • Sleep · ${SRC[vitals.sleep_source] ?? vitals.sleep_source}` : ''}
           </Text>

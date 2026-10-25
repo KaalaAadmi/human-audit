@@ -775,10 +775,7 @@ export default function DiaryScreen() {
       />
 
       {/* Edit Food Item Modal (MFP style) */}
-      <Modal visible={Boolean(editingFood)} animationType="slide" transparent onRequestClose={() => setEditingFood(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setEditingFood(null)}>
-          <Pressable style={styles.editFoodContainer} onPress={e => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
+      <Sheet visible={Boolean(editingFood)} onClose={() => setEditingFood(null)}>
             <Text style={[Typography.cardTitle, { marginBottom: 2 }]} numberOfLines={1}>
               {editingFood?.name}
             </Text>
@@ -890,9 +887,7 @@ export default function DiaryScreen() {
                 </Pressable>
               </View>
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </Sheet>
     </View>
   );
 }
@@ -1075,19 +1070,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.md,
     marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'flex-end',
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: Colors.borderMachined,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: Spacing.md,
   },
   sheetGrid: {
     flexDirection: 'row',
@@ -1283,15 +1265,6 @@ const styles = StyleSheet.create({
     color: Colors.bioGreen,
     fontSize: 11,
     fontWeight: '700',
-  },
-  editFoodContainer: {
-    backgroundColor: Colors.canvas,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
   },
   editMealRow: {
     flexDirection: 'row',

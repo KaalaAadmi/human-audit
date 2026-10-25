@@ -8,8 +8,16 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-2">1. Health Data & Privacy First</h2>
             <p>
-              HumanAudit reads and writes health records (steps, workouts, heart rate, sleep) via Apple HealthKit and Google Health Connect. We do not sell, rent, or monetize your health data to any advertising or third-party br
-  okers.
+              HumanAudit reads and writes health records (steps, workouts, heart rate, sleep) via Apple HealthKit and Google Health Connect. We do not sell, rent, or monetize your health data to any advertising or third-party brokers.
+            </p>
+          </section>
+          <section>
+            <h2 className="text-lg font-bold text-white mb-2">Google Health data</h2>
+            <p>
+              If you connect your Google account, we request read-only access to your Google Health data: workouts and heart-rate zones, sleep sessions and stages, resting heart rate, heart rate variability, and weight. We use it only to show you your own workouts, sleep, recovery and strain inside HumanAudit.
+              Your Google access tokens are stored encrypted. We do not share this data with third parties, and we do not use it for advertising or to train AI models.
+              HumanAudit&apos;s use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements.
+              You can disconnect Google at any time from Manage data sources in the app, which stops syncing and revokes our access. Deleting your account removes all data we hold.
             </p>
           </section>
           <section>

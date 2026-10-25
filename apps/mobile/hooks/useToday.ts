@@ -22,6 +22,8 @@ export function useToday(date?: string) {
 
   // Prevent concurrent fetches and infinite dependency loops
   const isFetchingRef = useRef(false);
+  // Date whose data is already on screen. Refetching the same date keeps showing it (no spinner); a new date starts loading.
+  const loadedForRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (d?: string) => {
     if (isFetchingRef.current) return;
@@ -29,7 +31,7 @@ export function useToday(date?: string) {
 
     const target = d ?? localDate();
     const dayOfWeek = new Date(target + 'T12:00:00').getDay();
-    setLoading(true);
+    if (loadedForRef.current !== target) setLoading(true);
 
     try {
       // Retry once if token is temporarily unavailable on cold start
@@ -73,6 +75,7 @@ export function useToday(date?: string) {
       setVitals(v ?? null);
       setWorkouts(wo?.today ?? []);
       setRecentWorkouts(wo?.recent ?? []);
+      loadedForRef.current = target;
       setError(null);
     } catch (e) {
       const msg = (e as Error).message;

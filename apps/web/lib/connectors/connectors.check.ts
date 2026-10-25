@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { decrypt, encrypt, signState, verifyState } from './crypto';
 import { mapPoint, mapRollup, metricsForScopes, SCOPES } from './googleHealth';
-import { dayOf, effectiveOrder, pickWorkouts, resolveDay, type Conn, type OriginMap, type Row } from './resolve';
+import { dayOf, effectiveOrder, pickWorkouts, resolveDay, sleepSegments, type Conn, type OriginMap, type Row } from './resolve';
 import { sampleId } from './store';
 
 process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
@@ -81,5 +81,21 @@ assert.equal(mapRollup('steps', { civilStartTime: { date: { year: 2026, month: 3
 assert.equal(mapRollup('steps', { civilStartTime: { date: { year: 2026, month: 3, day: 8 } } }), null, 'no rollup value stays null');
 assert.deepEqual(metricsForScopes([SCOPES[0]!]), ['sleep'], 'partial consent maps to granted metrics');
 assert.deepEqual(metricsForScopes([]), []);
+
+// ---- google exercise zones + daily ids ----
+const exZ = mapPoint('workouts', { dataPointName: 'p/e', exercise: { interval: { startTime: '2026-10-22T19:00:00Z', endTime: '2026-10-22T19:50:00Z' }, exerciseType: 'TREADMILL',
+  metricsSummary: { caloriesKcal: 425, averageHeartRateBeatsPerMinute: '143', heartRateZoneDurations: { lightTime: '0s', moderateTime: '1560s', vigorousTime: '1200s', peakTime: '120s' } } } })!;
+assert.deepEqual((exZ.payload as any).zones, [120, 0, 1560, 1200, 120], 'Z1 = remainder of the session, light..peak -> Z2..Z5');
+assert.equal((mapPoint('workouts', { dataPointName: 'p/e', exercise: { interval: { startTime: '2026-10-22T19:00:00Z', endTime: '2026-10-22T19:50:00Z' } } })!.payload as any).zones, null, 'no zones reported -> null');
+assert.equal(mapPoint('resting_hr', { dailyRestingHeartRate: { date: { year: 2026, month: 3, day: 8 }, beatsPerMinute: '58' } })!.originId, 'resting_hr:2026-03-08', 'daily point without a name is keyed by date');
+
+// ---- sleep timeline ----
+const gSeg = mapPoint('sleep', { dataPointName: 'p/s2', sleep: { interval: { startTime: '2026-03-07T22:30:00Z', endTime: '2026-03-08T06:30:00Z' }, summary: { minutesAsleep: '420' },
+  stages: [{ type: 'LIGHT', startTime: '2026-03-07T22:30:00Z', endTime: '2026-03-07T23:30:00Z' }, { type: 'DEEP', startTime: '2026-03-07T23:30:00Z', endTime: '2026-03-08T00:30:00Z' }, { type: 'WAKE?', startTime: 'x', endTime: 'y' }] } })!;
+assert.deepEqual((gSeg.payload as any).segments.map((g: any) => g.stage), ['light', 'deep'], 'google stages become a timeline; unknown types are skipped');
+const hkSeg = (stage: string, a: string, b: string) => row({ connection_id: 'hk', metric: 'sleep', origin_id: stage + a, start_at: a, end_at: b, payload: { stage } });
+const tl = sleepSegments([hkSeg('deep', '2026-03-08T01:00:00Z', '2026-03-08T02:00:00Z'), hkSeg('light', '2026-03-08T00:00:00Z', '2026-03-08T01:00:00Z'), hkSeg('asleep', '2026-03-08T00:00:00Z', '2026-03-08T02:00:00Z'), hkSeg('inbed', '2026-03-08T00:00:00Z', '2026-03-08T02:00:00Z')]);
+assert.deepEqual(tl.map((g) => g.stage), ['light', 'deep'], 'segment rows sorted; un-staged asleep and inbed dropped when stages exist');
+assert.equal(sleepSegments([hkSeg('asleep', '2026-03-08T00:00:00Z', '2026-03-08T02:00:00Z')])[0]!.stage, 'light', 'un-staged asleep is drawn as light when it is all there is');
 
 console.log('connectors.check: OK');

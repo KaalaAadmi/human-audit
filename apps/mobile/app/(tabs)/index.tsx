@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
@@ -16,6 +17,7 @@ const SRC: Record<string, string> = { apple_health: 'Apple Health', google_healt
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
 
 export default function HomeDashboard() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { loading, error, profile, goals, foods, waterMl, vitals, workouts, refresh } = useToday();
   const [pulling, setPulling] = useState(false);
@@ -54,7 +56,7 @@ export default function HomeDashboard() {
     : NA;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing.lg }]} refreshControl={<RefreshControl refreshing={pulling} onRefresh={pull} tintColor={Colors.textMuted} />}>
       <View style={styles.header}>
         <View>
           <Text style={Typography.metricLabel}>
@@ -75,13 +77,8 @@ export default function HomeDashboard() {
           <Text style={Typography.metricLabel}>Readiness</Text>
           <Text style={[styles.bigMetric, { color: Colors.readiness }]}>{readinessText}</Text>
           <Text style={Typography.caption}>
-            {vitals ? `HRV: ${vitals.overnight_hrv_rmssd ?? NA}ms • RHR: ${vitals.resting_heart_rate ?? NA}` : 'Connect a wearable to sync'}
+            {vitals ? `HRV ${vitals.overnight_hrv_rmssd != null ? Math.round(vitals.overnight_hrv_rmssd) : NA} ms • RHR ${vitals.resting_heart_rate ?? NA}` : 'Connect a wearable to sync'}
           </Text>
-          {!!(vitals?.hrv_source || vitals?.rhr_source) && (
-            <Text style={[Typography.caption, { color: Colors.textMuted }]}>
-              HRV{vitals.hrv_variant ? ` (${vitals.hrv_variant.toUpperCase()})` : ''} · {SRC[vitals.hrv_source] ?? NA} | RHR · {SRC[vitals.rhr_source] ?? NA}
-            </Text>
-          )}
         </GlassCard>
 
         <GlassCard style={styles.metricCard} borderColor="rgba(251, 191, 36, 0.15)">
@@ -91,6 +88,7 @@ export default function HomeDashboard() {
         </GlassCard>
       </View>
 
+      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/body-age' as any)}>
       <GlassCard style={styles.orbWidget} borderColor="rgba(192, 132, 252, 0.18)">
         <View style={styles.miniOrb} />
         <View style={{ flex: 1 }}>
@@ -108,7 +106,9 @@ export default function HomeDashboard() {
             {vitals?.sleep_source ? ` • Sleep · ${SRC[vitals.sleep_source] ?? vitals.sleep_source}` : ''}
           </Text>
         </View>
+        <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
       </GlassCard>
+      </TouchableOpacity>
 
       <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/diary')}>
         <GlassCard style={styles.nutritionCard}>

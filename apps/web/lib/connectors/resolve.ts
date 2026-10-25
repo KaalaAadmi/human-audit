@@ -101,6 +101,27 @@ export function resolveDay(metric: Metric, order: Conn[], dayRows: Row[], origin
   return NONE;
 }
 
+export type SleepSegment = { stage: 'awake' | 'light' | 'deep' | 'rem'; start: string; end: string };
+
+/**
+ * Stage timeline of one night from the rows of the winning origin. Session rows (Google Health) carry payload.segments;
+ * segment rows (HealthKit, Health Connect) carry payload.stage with their own start/end.
+ * ponytail: with several sessions in one day (nap + night) only the longest is drawn; split naps out if that matters.
+ */
+export function sleepSegments(rows: Row[]): SleepSegment[] {
+  const iso = (d: Date | string) => new Date(d).toISOString();
+  const sessions = rows.filter((r) => Array.isArray(r.payload?.segments));
+  if (sessions.length) {
+    return sessions.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a)).payload!.segments;
+  }
+  const staged = rows.some((r) => ['deep', 'rem', 'light'].includes(String(r.payload?.stage)));
+  const KEEP = ['awake', 'light', 'deep', 'rem'];
+  return rows
+    .filter((r) => KEEP.includes(String(r.payload?.stage)) || (!staged && r.payload?.stage === 'asleep')) // un-staged "asleep" overlaps staged data
+    .map((r) => ({ stage: (r.payload!.stage === 'asleep' ? 'light' : r.payload!.stage) as SleepSegment['stage'], start: iso(r.start_at), end: iso(r.end_at) }))
+    .sort((x, y) => Date.parse(x.start) - Date.parse(y.start));
+}
+
 /** Workouts overlapping by more than 80% of the shorter one are the same session; the higher-priority origin is kept. */
 export function pickWorkouts(order: Conn[], rows: Row[], origins: OriginMap): { kept: Row[]; dropped: Row[] } {
   const kept: Row[] = [];

@@ -14,6 +14,7 @@ import { ScrollView, Swipeable } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
@@ -26,6 +27,7 @@ import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
 import { VoiceLogModal } from '../../components/VoiceLogModal';
 import { PhotoMealModal } from '../../components/PhotoMealModal';
 import { CustomFoodModal } from '../../components/CustomFoodModal';
+import { Sheet } from '../../components/Sheet';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -59,13 +61,14 @@ function stepBurnKcal(profile: any): number {
 }
 
 export default function DiaryScreen() {
+  const insets = useSafeAreaInsets();
   const [diaryDate, setDiaryDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
   const isToday = diaryDate === (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 
-  const { loading, goals, foods: foodLogs, setFoods: setFoodLogs, workouts, profile, error: loadError } = useToday(diaryDate);
+  const { goals, foods: foodLogs, setFoods: setFoodLogs, workouts, profile, error: loadError } = useToday(diaryDate);
   const [prevDayFoods, setPrevDayFoods] = useState<FoodLogItem[]>([]);
 
   useEffect(() => {
@@ -75,10 +78,10 @@ export default function DiaryScreen() {
       .catch(() => setPrevDayFoods([]));
   }, [diaryDate]);
 
-  const targetCalories = loading || !goals ? 0 : goals.calories;
-  const targetProteinG = loading || !goals ? 0 : goals.proteinG;
-  const targetCarbsG = loading || !goals ? 0 : goals.carbsG;
-  const targetFatG = loading || !goals ? 0 : goals.fatG;
+  const targetCalories = goals?.calories ?? 0;
+  const targetProteinG = goals?.proteinG ?? 0;
+  const targetCarbsG = goals?.carbsG ?? 0;
+  const targetFatG = goals?.fatG ?? 0;
 
   // Only count burn ABOVE the 10K-step baseline — so baseline daily activity doesn't inflate the budget
   const stepBaseline = useMemo(() => stepBurnKcal(profile), [profile]);
@@ -109,7 +112,7 @@ export default function DiaryScreen() {
 
   // Computed Totals
   const totalFoodCalories = foodLogs.reduce((acc, item) => acc + item.calories, 0);
-  const remainingCalories = loading ? 0 : targetCalories - totalFoodCalories + exerciseBurn;
+  const remainingCalories = !goals ? 0 : targetCalories - totalFoodCalories + exerciseBurn;
   const totalProteinG = Math.round(foodLogs.reduce((acc, item) => acc + item.proteinG, 0));
   const totalCarbsG = Math.round(foodLogs.reduce((acc, item) => acc + item.carbsG, 0));
   const totalFatG = Math.round(foodLogs.reduce((acc, item) => acc + item.fatG, 0));
@@ -175,7 +178,10 @@ export default function DiaryScreen() {
     setPendingFood(null);
     setPendingServings('1');
     setShowSearchModal(false);
+    setShowLogSheet(false);
   };
+
+  const closeSearch = () => { setShowSearchModal(false); setPendingFood(null); setPendingServings('1'); };
 
   const handleAddMultipleFoods = (items: SearchFoodResult[]) => {
     items.forEach(item => handleAddFoodItem(item));
@@ -295,7 +301,7 @@ export default function DiaryScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={Typography.heroTitle}>Food Diary</Text>
@@ -371,12 +377,12 @@ export default function DiaryScreen() {
             </View>
             <View style={styles.calSummaryMid}>
                 <Text style={styles.calSummaryFire}>🔥</Text>
-                <Text style={styles.calSummaryGoal}>{loading ? '--' : targetCalories}</Text>
+                <Text style={styles.calSummaryGoal}>{!goals ? '--' : targetCalories}</Text>
                 <Text style={styles.calSummaryLabel}>Goal</Text>
               </View>
             <View style={styles.calSummaryCol}>
-              <Text style={[styles.calSummaryValue, !loading && remainingCalories < 0 && { color: Colors.bioRose }]}>
-                {loading ? '--' : remainingCalories}
+              <Text style={[styles.calSummaryValue, !!goals && remainingCalories < 0 && { color: Colors.bioRose }]}>
+                {!goals ? '--' : remainingCalories}
               </Text>
               <Text style={styles.calSummaryLabel}>Remaining</Text>
             </View>
@@ -391,19 +397,19 @@ export default function DiaryScreen() {
             <View style={styles.macroNumCol}>
               <Text style={[styles.macroNumValue, { color: Colors.bioAmber }]}>{totalCarbsG}g</Text>
               <Text style={styles.macroNumSub}>Carbs</Text>
-              <Text style={styles.macroNumSub}>{loading ? '--' : `${targetCarbsG}g`}</Text>
+              <Text style={styles.macroNumSub}>{!goals ? '--' : `${targetCarbsG}g`}</Text>
             </View>
             <View style={styles.macroNumDivider} />
             <View style={styles.macroNumCol}>
               <Text style={[styles.macroNumValue, { color: Colors.bioRose }]}>{totalFatG}g</Text>
               <Text style={styles.macroNumSub}>Fat</Text>
-              <Text style={styles.macroNumSub}>{loading ? '--' : `${targetFatG}g`}</Text>
+              <Text style={styles.macroNumSub}>{!goals ? '--' : `${targetFatG}g`}</Text>
             </View>
             <View style={styles.macroNumDivider} />
             <View style={styles.macroNumCol}>
               <Text style={[styles.macroNumValue, { color: Colors.bioGreen }]}>{totalProteinG}g</Text>
               <Text style={styles.macroNumSub}>Protein</Text>
-              <Text style={styles.macroNumSub}>{loading ? '--' : `${targetProteinG}g`}</Text>
+              <Text style={styles.macroNumSub}>{!goals ? '--' : `${targetProteinG}g`}</Text>
             </View>
           </View>
 
@@ -413,7 +419,7 @@ export default function DiaryScreen() {
             <View style={styles.macroBarCol}>
               <View style={styles.progressTrack}>
                 <View
-                  style={[styles.progressFill, { width: `${Math.min(100, Math.round((totalProteinG / targetProteinG) * 100))}%`, backgroundColor: Colors.bioGreen }]}
+                  style={[styles.progressFill, { width: `${targetProteinG > 0 ? Math.min(100, Math.round((totalProteinG / targetProteinG) * 100)) : 0}%`, backgroundColor: Colors.bioGreen }]}
                 />
               </View>
             </View>
@@ -422,7 +428,7 @@ export default function DiaryScreen() {
             <View style={styles.macroBarCol}>
               <View style={styles.progressTrack}>
                 <View
-                  style={[styles.progressFill, { width: `${Math.min(100, Math.round((totalCarbsG / targetCarbsG) * 100))}%`, backgroundColor: Colors.bioAmber }]}
+                  style={[styles.progressFill, { width: `${targetCarbsG > 0 ? Math.min(100, Math.round((totalCarbsG / targetCarbsG) * 100)) : 0}%`, backgroundColor: Colors.bioAmber }]}
                 />
               </View>
             </View>
@@ -431,7 +437,7 @@ export default function DiaryScreen() {
             <View style={styles.macroBarCol}>
               <View style={styles.progressTrack}>
                 <View
-                  style={[styles.progressFill, { width: `${Math.min(100, Math.round((totalFatG / targetFatG) * 100))}%`, backgroundColor: Colors.bioRose }]}
+                  style={[styles.progressFill, { width: `${targetFatG > 0 ? Math.min(100, Math.round((totalFatG / targetFatG) * 100)) : 0}%`, backgroundColor: Colors.bioRose }]}
                 />
               </View>
             </View>
@@ -569,10 +575,7 @@ export default function DiaryScreen() {
       </ScrollView>
 
       {/* Multi-Modal Logging Bottom Action Sheet */}
-      <Modal visible={showLogSheet} animationType="slide" transparent>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowLogSheet(false)}>
-          <View style={styles.sheetContainer}>
-            <View style={styles.sheetHandle} />
+      <Sheet visible={showLogSheet} onClose={() => setShowLogSheet(false)}>
             <Text style={[Typography.cardTitle, { marginBottom: 2 }]}>
               Log {meals.find(m => m.key === activeMealType)?.label}
             </Text>
@@ -581,10 +584,7 @@ export default function DiaryScreen() {
             <View style={styles.sheetGrid}>
               <Pressable
                 style={styles.sheetOption}
-                onPress={() => {
-                  setShowLogSheet(false);
-                  setShowSearchModal(true);
-                }}
+                onPress={() => setShowSearchModal(true)} // stays open underneath: closing search reveals it again
               >
                 <Ionicons name="search-outline" size={22} color={Colors.bioGreen} style={{ marginBottom: 6 }} />
                 <Text style={styles.sheetLabel}>Search Foods</Text>
@@ -637,14 +637,9 @@ export default function DiaryScreen() {
             >
               <Text style={styles.customFoodBtnText}>+ Create Custom Food / Recipe</Text>
             </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
 
-      {/* Direct Search Modal */}
-      <Modal visible={showSearchModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.searchModalContainer}>
+      {/* Search sheet is nested in the log sheet: closing it reveals the log sheet again (nested Modals are the supported way to stack on iOS) */}
+      <Sheet visible={showSearchModal} onClose={closeSearch} height={0.85} dim={0.45}>
             <View style={styles.searchHeader}>
               <TextInput
                 style={styles.searchBar}
@@ -654,7 +649,7 @@ export default function DiaryScreen() {
                 value={searchQuery}
                 onChangeText={handleSearch}
               />
-              <Pressable onPress={() => { setShowSearchModal(false); setPendingFood(null); setPendingServings('1'); }} style={styles.closeSearchBtn}>
+              <Pressable onPress={closeSearch} style={styles.closeSearchBtn}>
                 <Text style={{ color: Colors.textMuted }}>Close</Text>
               </Pressable>
             </View>
@@ -751,9 +746,8 @@ export default function DiaryScreen() {
               />
               </>
             )}
-          </View>
-        </View>
-      </Modal>
+      </Sheet>
+      </Sheet>
 
       {/* Auxiliary Modals */}
       <BarcodeScannerModal
@@ -1087,15 +1081,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'flex-end',
   },
-  sheetContainer: {
-    backgroundColor: Colors.canvas,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
-  },
   sheetHandle: {
     width: 36,
     height: 4,
@@ -1144,16 +1129,6 @@ const styles = StyleSheet.create({
     color: Colors.bioGreen,
     fontWeight: '700',
     fontSize: 13,
-  },
-  searchModalContainer: {
-    backgroundColor: Colors.canvas,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
-    height: '85%',
   },
   searchHeader: {
     flexDirection: 'row',

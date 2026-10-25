@@ -7,11 +7,12 @@ import { query } from '../db';
 import { computeReadiness, type HrvDay } from '../../../mobile/services/readinessEngine';
 import { computeSleepResults, type NightSleep } from '../../../mobile/services/sleepEngine';
 import { computeFitnessAge } from '../../../mobile/services/fitnessAgeEngine';
+import { WearableEngine } from '../../../mobile/services/wearableEngine';
 import { METRICS, METRIC_UNITS, type Metric, type Source } from './metrics';
 import { dayOf, effectiveOrder, pickWorkouts, resolveDay, type Conn, type OriginMap, type Resolved, type Row } from './resolve';
 
 /** Must match dayOf() in resolve.ts. */
-const DAY_SQL = `((start_at AT TIME ZONE 'UTC') + (tz_offset_minutes + CASE WHEN metric = 'sleep' THEN 720 ELSE 0 END) * interval '1 minute')::date`;
+export const DAY_SQL = `((start_at AT TIME ZONE 'UTC') + (tz_offset_minutes + CASE WHEN metric = 'sleep' THEN 720 ELSE 0 END) * interval '1 minute')::date`;
 
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const LEGACY_SOURCE: Record<Source, string> = { healthkit: 'apple_health', health_connect: 'google_health', google_health: 'google_health' };
@@ -72,6 +73,7 @@ export async function recompute(userId: string, dates: string[] | null) {
   }
 
   await projectWorkouts(userId, rows, orderFor('workouts'), origins, conns);
+  await projectStrain(userId, wanted);
   await projectVitals(userId, wanted, conns);
   return { dates: wanted.length };
 }
@@ -84,6 +86,11 @@ function NO_WORKOUT_SUMMARY(dayRows: Row[], order: Conn[], origins: OriginMap): 
   return { value: sec, variant: null, connectionId: kept[0]!.connection_id, payload: { count: kept.length } };
 }
 
+/** [Z1..Z5] seconds. Sources without HR zones (HealthKit today) count the whole session as Z3. */
+const zonesOf = (w: Row): number[] => w.payload?.zones ?? [0, 0, Math.round(Number(w.payload?.durationSec ?? w.value ?? 0)), 0, 0];
+/** Per-minute TRIMP weights per zone, as the old bridge used. */
+const ZONE_WEIGHT = [0.10, 0.35, 0.80, 1.50, 2.20];
+
 async function projectWorkouts(userId: string, rows: Row[], order: Conn[], origins: OriginMap, conns: ConnRow[]) {
   const all = rows.filter((r) => r.metric === 'workouts');
   const { kept, dropped } = pickWorkouts(order, all, origins);
@@ -95,20 +102,22 @@ async function projectWorkouts(userId: string, rows: Row[], order: Conn[], origi
       external_id: w.origin_id, source: LEGACY_SOURCE[src.get(w.connection_id)!], workout_type: String(p.type ?? 'workout'),
       start_time: new Date(w.start_at).toISOString(), end_time: new Date(w.end_at).toISOString(), duration_seconds: dur,
       active_calories: Math.round(Number(p.activeCalories ?? 0)), avg_heart_rate: p.avgHr ?? null, max_heart_rate: p.maxHr ?? null,
+      zones: zonesOf(w),
     };
   };
   if (kept.length) {
     await query(
       `INSERT INTO workout_logs (user_id, external_id, source, workout_type, start_time, end_time, duration_seconds, active_calories,
-         avg_heart_rate, max_heart_rate, zone3_seconds, deduped_status)
+         avg_heart_rate, max_heart_rate, zone1_seconds, zone2_seconds, zone3_seconds, zone4_seconds, zone5_seconds, deduped_status)
        SELECT $1, r.external_id, r.source, r.workout_type, r.start_time, r.end_time, r.duration_seconds, r.active_calories,
-         r.avg_heart_rate, r.max_heart_rate, r.duration_seconds, 'active'
+         r.avg_heart_rate, r.max_heart_rate, r.zones[1], r.zones[2], r.zones[3], r.zones[4], r.zones[5], 'active'
        FROM jsonb_to_recordset($2::jsonb) AS r(external_id text, source text, workout_type text, start_time timestamptz, end_time timestamptz,
-         duration_seconds int, active_calories int, avg_heart_rate int, max_heart_rate int)
+         duration_seconds int, active_calories int, avg_heart_rate int, max_heart_rate int, zones int[])
        ON CONFLICT (user_id, external_id) WHERE external_id IS NOT NULL DO UPDATE SET workout_type = EXCLUDED.workout_type,
          start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, duration_seconds = EXCLUDED.duration_seconds,
          active_calories = EXCLUDED.active_calories, avg_heart_rate = EXCLUDED.avg_heart_rate, max_heart_rate = EXCLUDED.max_heart_rate,
-         zone3_seconds = EXCLUDED.duration_seconds, deduped_status = 'active'`,
+         zone1_seconds = EXCLUDED.zone1_seconds, zone2_seconds = EXCLUDED.zone2_seconds, zone3_seconds = EXCLUDED.zone3_seconds,
+         zone4_seconds = EXCLUDED.zone4_seconds, zone5_seconds = EXCLUDED.zone5_seconds, deduped_status = 'active'`,
       [userId, JSON.stringify(kept.map(rec))]
     );
   }
@@ -118,6 +127,36 @@ async function projectWorkouts(userId: string, rows: Row[], order: Conn[], origi
   await query(
     `DELETE FROM workout_logs w USING samples s WHERE w.user_id = $1 AND s.user_id = $1 AND s.metric = 'workouts'
        AND s.deleted_at IS NOT NULL AND w.external_id = s.origin_id`, [userId]);
+  // Legacy rows (written straight to workout_logs by the pre-connector bridge) have no sample, so pickWorkouts never saw them.
+  // One that overlaps (>80% of the shorter) a row that did come from a connection is the same session: the connection wins.
+  // ponytail: orphans never outrank a connected source; connect that source and it takes part in the normal priority order.
+  await query(
+    `UPDATE workout_logs o SET deduped_status = 'duplicate'
+     WHERE o.user_id = $1 AND o.deduped_status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM samples s WHERE s.user_id = $1 AND s.metric = 'workouts' AND s.deleted_at IS NULL AND s.origin_id = o.external_id)
+       AND EXISTS (SELECT 1 FROM workout_logs k JOIN samples s ON s.user_id = $1 AND s.metric = 'workouts' AND s.deleted_at IS NULL AND s.origin_id = k.external_id
+                   WHERE k.user_id = $1 AND k.deduped_status = 'active' AND k.id <> o.id
+                     AND extract(epoch FROM least(k.end_time, o.end_time) - greatest(k.start_time, o.start_time))
+                         > 0.8 * least(k.duration_seconds, o.duration_seconds))`, [userId]);
+}
+
+/** Day strain from the workouts shown to the user (active rows, legacy ones included): TRIMP from zone minutes -> 0..21.
+ *  Only touches the strain columns. Days are workout_logs.start_time::date, same as GET /api/workouts. */
+async function projectStrain(userId: string, dates: string[]) {
+  const rows = await query<{ d: string; z: number[] }>(
+    `SELECT start_time::date::text AS d, ARRAY[sum(zone1_seconds), sum(zone2_seconds), sum(zone3_seconds), sum(zone4_seconds), sum(zone5_seconds)]::int[] AS z
+     FROM workout_logs WHERE user_id = $1 AND deduped_status = 'active' AND start_time::date = ANY($2::date[]) GROUP BY 1`, [userId, dates]);
+  const trimp = rows.map((r) => ({ d: r.d, t: Math.round(r.z.reduce((a, sec, i) => a + (sec / 60) * ZONE_WEIGHT[i]!, 0) * 100) / 100 }));
+  if (trimp.length) {
+    await query(
+      `INSERT INTO daily_vitals_summary (user_id, summary_date, trimp_raw, day_strain)
+       SELECT $1, r.d, r.t, r.s FROM jsonb_to_recordset($2::jsonb) AS r(d date, t numeric, s numeric)
+       ON CONFLICT (user_id, summary_date) DO UPDATE SET trimp_raw = EXCLUDED.trimp_raw, day_strain = EXCLUDED.day_strain`,
+      [userId, JSON.stringify(trimp.map(({ d, t }) => ({ d, t, s: WearableEngine.trimpToStrain(t) })))]);
+  }
+  // A workout that disappeared (deleted, or now a duplicate) must not leave strain behind.
+  await query(`UPDATE daily_vitals_summary SET trimp_raw = 0, day_strain = 0 WHERE user_id = $1 AND summary_date = ANY($2::date[]) AND day_strain > 0`,
+    [userId, dates.filter((d) => !trimp.some((x) => x.d === d))]);
 }
 
 async function projectVitals(userId: string, dates: string[], conns: ConnRow[]) {

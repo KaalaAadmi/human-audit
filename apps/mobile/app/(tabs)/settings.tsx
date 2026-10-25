@@ -6,6 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
@@ -15,6 +16,7 @@ import { RecipeBuilderModal, CustomRecipe } from '../../components/RecipeBuilder
 import { SearchFoodResult } from '../../services/nutritionService';
 import { SyncService, DEFAULT_GOALS, DEFAULT_WEARABLES, WearableSettings } from '../../services/syncService';
 import { DEFAULT_REMINDER_START_MIN, DEFAULT_REMINDER_END_MIN, fmtMin, minToDate, scheduleWaterReminders } from '../../services/waterReminders';
+import { SourceOrder, useSourcePrefs } from '../../components/SourceOrder';
 import { BIOMETRICS_ENABLED_KEY } from '../../components/BiometricPrivacyLock';
 
 type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -28,6 +30,8 @@ interface DayGoal {
 }
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
+  const sourcePrefs = useSourcePrefs();
   // Server-backed state (loaded on mount; null/empty until then)
   const [profile, setProfile] = useState<any>(null);
   const [vitals, setVitals] = useState<any>(null);
@@ -222,7 +226,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <Text style={[Typography.heroTitle, { marginBottom: Spacing.md }]}>Profile & Settings</Text>
 
@@ -553,6 +557,12 @@ export default function SettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
           </Pressable>
+        </GlassCard>
+
+        <GlassCard style={{ marginBottom: Spacing.xl }}>
+          <Text style={[Typography.bodyText, { fontWeight: '700' }]}>Workout priority</Text>
+          <Text style={Typography.caption}>When two sources record the same workout, the one ranked first is kept.</Text>
+          <SourceOrder metric="workouts" state={sourcePrefs} />
         </GlassCard>
 
 

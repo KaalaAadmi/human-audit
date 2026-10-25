@@ -1,39 +1,18 @@
-import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { Spacing } from '../theme/spacing';
 import { GlassCard } from '../components/GlassCard';
-import { getPreferences, listConnections, putPreference } from '../services/connectors/api';
-import { DEFAULT_METRICS, METRIC_LABEL, SOURCE_LABEL, type Connection, type Metric } from '../services/connectors/model';
-
-/** Same rule as the server (resolve.ts effectiveOrder): saved order first, then any other source that has the metric. */
-function orderFor(metric: Metric, pref: string[] | undefined, conns: Connection[]) {
-  const ok = conns.filter((c) => c.status !== 'not_connected' && c.grantedMetrics.includes(metric));
-  const first = (pref ?? []).flatMap((id) => ok.filter((c) => c.id === id));
-  return [...first, ...ok.filter((c) => !first.includes(c))];
-}
+import { SourceOrder, orderFor, useSourcePrefs } from '../components/SourceOrder';
+import { DEFAULT_METRICS, METRIC_LABEL } from '../services/connectors/model';
 
 export default function MetricSources() {
   const router = useRouter();
-  const [conns, setConns] = useState<Connection[]>([]);
-  const [prefs, setPrefs] = useState<Partial<Record<Metric, string[]>>>({});
-  const [error, setError] = useState<string | null>(null);
-
-  useFocusEffect(useCallback(() => {
-    Promise.all([listConnections(), getPreferences()]).then(([c, p]) => { setConns(c); setPrefs(p); setError(null); }).catch((e) => setError(e.message));
-  }, []));
-
-  const move = (metric: Metric, index: number) => {
-    const order = orderFor(metric, prefs[metric], conns).map((c) => c.id);
-    [order[index - 1], order[index]] = [order[index], order[index - 1]];
-    const prev = prefs;
-    setPrefs({ ...prefs, [metric]: order });
-    putPreference(metric, order).catch((e) => { setPrefs(prev); Alert.alert('Could not save', e.message); });
-  };
+  const state = useSourcePrefs();
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -42,23 +21,16 @@ export default function MetricSources() {
         <Text style={Typography.sectionHeader}>Source per metric</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.md }}>
-        <Text style={Typography.caption}>The first source with data for a day is used. The others are fallbacks.</Text>
-        {error && <Text style={[Typography.caption, { color: Colors.bioRose }]}>{error}</Text>}
+        <Text style={Typography.caption}>The first source with data for a day is used. The others are fallbacks. For workouts, the top source wins when two sources record the same session.</Text>
+        {state.error && <Text style={[Typography.caption, { color: Colors.bioRose }]}>{state.error}</Text>}
         {DEFAULT_METRICS.map((metric) => {
-          const order = orderFor(metric, prefs[metric], conns);
+          const order = orderFor(metric, state.prefs[metric], state.conns);
           // Apple Health reports SDNN, Google Health and Health Connect report RMSSD: the numbers are not comparable.
           const mixed = metric === 'hrv' && new Set(order.map((c) => c.source === 'healthkit')).size > 1;
           return (
             <GlassCard key={metric}>
               <Text style={Typography.cardTitle}>{METRIC_LABEL[metric]}</Text>
-              {order.length === 0 && <Text style={Typography.caption}>No connected source provides this yet.</Text>}
-              {order.map((c, i) => (
-                <View key={c.id} style={styles.row}>
-                  <Text style={styles.rank}>{i + 1}</Text>
-                  <Text style={[Typography.bodyText, { flex: 1, color: Colors.textPrimary }]}>{SOURCE_LABEL[c.source]}</Text>
-                  {i > 0 && <Pressable hitSlop={10} onPress={() => move(metric, i)}><Ionicons name="arrow-up" size={18} color={Colors.link} /></Pressable>}
-                </View>
-              ))}
+              <SourceOrder metric={metric} state={state} />
               {mixed && (
                 <Text style={[Typography.caption, { color: Colors.warning, marginTop: Spacing.sm }]}>
                   Apple Health measures HRV as SDNN; Google Health uses RMSSD. Your readiness baseline restarts.
@@ -75,6 +47,4 @@ export default function MetricSources() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.canvas },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingTop: Spacing.sm },
-  rank: { width: 22, textAlign: 'center', color: Colors.bioGreen, fontWeight: '700' },
 });

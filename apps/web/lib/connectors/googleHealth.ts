@@ -114,8 +114,10 @@ export function mapPoint(metric: Metric, p: any): SampleInput | null {
       const stages = { deep: 0, rem: 0, light: 0, awake: 0 };
       for (const st of s.summary?.stagesSummary ?? []) { const k = STAGE_KEY[st.type]; if (k) stages[k] += num(st.minutes) || 0; }
       const asleep = num(s.summary?.minutesAsleep);
+      // The stage timeline (hypnogram). Kept per session so /api/sleep can draw it; the totals above stay the source for scoring.
+      const segments = (s.stages ?? []).flatMap((g: any) => { const k = STAGE_KEY[g.type]; return k && g.startTime && g.endTime ? [{ stage: k, start: g.startTime, end: g.endTime }] : []; });
       return { ...base, metric, value: Number.isFinite(asleep) ? asleep : stages.deep + stages.rem + stages.light, unit: 'min', startAt: s.interval.startTime, endAt: s.interval.endTime,
-        tzOffsetMinutes: offMin(s.interval.endUtcOffset), originId: id, payload: { stages, inBed: num(s.summary?.minutesInSleepPeriod) || null, type: s.type } };
+        tzOffsetMinutes: offMin(s.interval.endUtcOffset), originId: id, payload: { stages, inBed: num(s.summary?.minutesInSleepPeriod) || null, type: s.type, segments } };
     }
     case 'hrv': {
       const h = p.dailyHeartRateVariability;
@@ -139,9 +141,14 @@ export function mapPoint(metric: Metric, p: any): SampleInput | null {
       if (!e?.interval) return null;
       const dur = Math.round((Date.parse(e.interval.endTime) - Date.parse(e.interval.startTime)) / 1000);
       const m = e.metricsSummary ?? {};
+      // Google reports 4 zones as durations ("1560s"). Map light..peak to Z2..Z5; Z1 = the rest of the session below "light".
+      const z = m.heartRateZoneDurations;
+      const sec = (d?: string) => (d ? Math.round(parseFloat(d)) || 0 : 0);
+      const zones = z ? [sec(z.lightTime), sec(z.moderateTime), sec(z.vigorousTime), sec(z.peakTime)] : null;
       return { ...base, metric, value: dur, unit: 's', startAt: e.interval.startTime, endAt: e.interval.endTime, tzOffsetMinutes: offMin(e.interval.startUtcOffset), originId: id,
         payload: { type: (e.exerciseType ?? 'workout').toLowerCase(), name: e.displayName ?? null, durationSec: dur, activeCalories: m.caloriesKcal ?? 0,
-          avgHr: Number.isFinite(num(m.averageHeartRateBeatsPerMinute)) ? num(m.averageHeartRateBeatsPerMinute) : null, maxHr: null } };
+          avgHr: Number.isFinite(num(m.averageHeartRateBeatsPerMinute)) ? num(m.averageHeartRateBeatsPerMinute) : null, maxHr: null,
+          zones: zones ? [Math.max(0, dur - zones.reduce((a, b) => a + b, 0)), ...zones] : null } };
     }
     default: return null;
   }

@@ -12,6 +12,7 @@ import {
 import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from "../../theme/colors";
 import { Typography } from "../../theme/typography";
 import { Spacing } from "../../theme/spacing";
@@ -29,6 +30,7 @@ import { ConfettiCelebration } from "../../components/ConfettiCelebration";
 const warn = (e: unknown) => console.warn("[SYNC_ERR]", e);
 
 export default function WaterScreen() {
+  const insets = useSafeAreaInsets();
   const [waterMl, setWaterMl] = useState(0);
   const [goalMl, setGoalMl] = useState(3000);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
@@ -183,7 +185,7 @@ export default function WaterScreen() {
     <View style={{ flex: 1, backgroundColor: Colors.canvas }}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing.lg }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>

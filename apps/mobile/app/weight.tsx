@@ -10,13 +10,15 @@ import { GlassCard } from '../components/GlassCard';
 import { SyncService } from '../services/syncService';
 
 type Point = { date: string; kg: number };
-const CHART_H = 180;
+const CHART_H = 220;
+const TOP = 46; // strip above the plot reserved for the selection label
 const PAD = 14;
 const fmtDate = (d: string, withYear = false) =>
   new Date(`${d}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}) });
 
 /** Line chart drawn with plain Views (no chart/SVG dependency): dots joined by rotated 2px bars. */
 function Chart({ points, width }: { points: Point[]; width: number }) {
+  const [sel, setSel] = useState<number | null>(null);
   const kgs = points.map((p) => p.kg);
   const lo = Math.min(...kgs), hi = Math.max(...kgs);
   const span = hi - lo || 1; // single value / flat line sits mid-chart
@@ -24,10 +26,15 @@ function Chart({ points, width }: { points: Point[]; width: number }) {
   const tSpan = new Date(points[points.length - 1].date).getTime() - t0 || 1;
   const xy = points.map((p) => ({
     x: points.length === 1 ? width / 2 : PAD + ((new Date(p.date).getTime() - t0) / tSpan) * (width - 2 * PAD),
-    y: hi === lo ? CHART_H / 2 : PAD + (1 - (p.kg - lo) / span) * (CHART_H - 2 * PAD),
+    y: hi === lo ? (TOP + CHART_H - PAD) / 2 : TOP + (1 - (p.kg - lo) / span) * (CHART_H - TOP - PAD),
   }));
+  // Tap anywhere: pick the nearest point by x (children ignore touches so locationX is relative to the chart).
+  const pick = (x: number) => setSel(xy.reduce((best, p, i) => (Math.abs(p.x - x) < Math.abs(xy[best].x - x) ? i : best), 0));
+  const s = sel !== null && sel < xy.length ? sel : null;
   return (
-    <View style={{ height: CHART_H, width }}>
+    <Pressable style={{ height: CHART_H, width }} onPress={(e) => pick(e.nativeEvent.locationX)}>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {s !== null && <View style={[styles.guide, { left: xy[s].x - 0.5, top: TOP - 6 }]} />}
       {xy.slice(1).map((b, i) => {
         const a = xy[i];
         const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -43,9 +50,16 @@ function Chart({ points, width }: { points: Point[]; width: number }) {
         );
       })}
       {xy.map((p, i) => (
-        <View key={i} style={[styles.dot, { left: p.x - 4, top: p.y - 4 }]} />
+        <View key={i} style={[styles.dot, { left: p.x - 4, top: p.y - 4 }, s === i && styles.dotSel]} />
       ))}
-    </View>
+      {s !== null && (
+        <View style={[styles.tip, { left: Math.max(0, Math.min(width - 96, xy[s].x - 48)), top: 0 }]}>
+          <Text style={styles.tipKg}>{points[s].kg.toFixed(1)} kg</Text>
+          <Text style={Typography.caption}>{fmtDate(points[s].date, true)}</Text>
+        </View>
+      )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -127,6 +141,10 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm, marginVertical: 2 },
   hero: { fontSize: 56, fontWeight: '800', letterSpacing: -2, color: Colors.textPure },
   dot: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.bioGreen },
+  dotSel: { width: 14, height: 14, borderRadius: 7, marginLeft: -3, marginTop: -3, borderWidth: 2, borderColor: Colors.textPure },
+  guide: { position: 'absolute', width: 1, bottom: 0, backgroundColor: Colors.textMuted, opacity: 0.5 },
+  tip: { position: 'absolute', width: 96, alignItems: 'center', paddingVertical: 3, borderRadius: 8, backgroundColor: Colors.surfaceHighlight },
+  tipKg: { color: Colors.textPure, fontWeight: '700', fontSize: 13 },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.xs },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
 });

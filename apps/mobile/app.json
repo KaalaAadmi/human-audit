@@ -18,7 +18,8 @@
       "infoPlist": {
         "NSHealthShareUsageDescription": "HumanAudit uses Apple Health data to track HRV, sleep, readiness, and workouts.",
         "NSHealthUpdateUsageDescription": "HumanAudit writes hydration logs to your health record.",
-        "NSCameraUsageDescription": "HumanAudit uses your camera to scan food barcodes and analyze meal photos."
+        "NSCameraUsageDescription": "HumanAudit uses your camera to scan food barcodes and analyze meal photos.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -74,7 +75,11 @@
       [
         "expo-build-properties",
         {
-          "android": { "compileSdkVersion": 36, "targetSdkVersion": 36, "minSdkVersion": 26 }
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 26
+          }
         }
       ],
       "expo-background-task"

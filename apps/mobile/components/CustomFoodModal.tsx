@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, Modal, Pressable, TextInput, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, Pressable, TextInput, ScrollView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { Spacing } from '../theme/spacing';
 import { SearchFoodResult } from '../services/nutritionService';
+import { Sheet } from './Sheet';
+import { RecipeBuilder, CustomRecipe } from './RecipeBuilderModal';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onFoodCreated: (food: SearchFoodResult) => void;
+  onRecipeSaved: (recipe: CustomRecipe) => void;
 }
 
-export function CustomFoodModal({ visible, onClose, onFoodCreated }: Props) {
+export function CustomFoodModal({ visible, onClose, onFoodCreated, onRecipeSaved }: Props) {
+  const [tab, setTab] = useState<'food' | 'recipe'>('food');
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [servingSize, setServingSize] = useState('100g');
@@ -54,24 +58,35 @@ export function CustomFoodModal({ visible, onClose, onFoodCreated }: Props) {
     setFatG('');
   };
 
-  if (!visible) return null;
-
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Header */}
+    <Sheet visible={visible} onClose={onClose} height={0.85}>
           <View style={styles.header}>
             <View>
-              <Text style={Typography.cardTitle}>Custom Food & Recipe</Text>
-              <Text style={Typography.caption}>Create and log custom items with exact grams</Text>
+              <Text style={Typography.cardTitle}>Create Food or Recipe</Text>
+              <Text style={Typography.caption}>Saved to your library, shared with other users</Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={{ color: Colors.textMuted, fontSize: 18 }}>✕</Text>
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.tabsRow}>
+            {(['food', 'recipe'] as const).map(t => (
+              <Pressable
+                key={t}
+                style={[styles.tab, tab === t && styles.tabActive]}
+                onPress={() => { Haptics.selectionAsync(); setTab(t); }}
+              >
+                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === 'food' ? 'Custom Food' : 'Recipe'}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Both panes stay mounted (the inactive one is hidden) so half-filled forms survive switching tabs. */}
+          <View style={tab === 'recipe' ? styles.pane : styles.hidden}>
+            <RecipeBuilder onClose={onClose} onRecipeSaved={onRecipeSaved} />
+          </View>
+          <ScrollView style={tab === 'food' ? styles.pane : styles.hidden} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             {/* Form Fields */}
             <Text style={[Typography.statLabel, { marginTop: Spacing.sm }]}>FOOD / RECIPE NAME *</Text>
             <TextInput
@@ -159,34 +174,24 @@ export function CustomFoodModal({ visible, onClose, onFoodCreated }: Props) {
               <Text style={styles.actionBtnText}>Save and Add to Diary</Text>
             </Pressable>
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'flex-end',
-  },
-  container: {
-    backgroundColor: Colors.canvas,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
-    maxHeight: '90%',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
+  pane: { flex: 1 },
+  hidden: { display: 'none' },
+  tabsRow: { flexDirection: 'row', backgroundColor: Colors.surfaceHighlight, borderRadius: 10, padding: 3, marginBottom: Spacing.sm },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  tabActive: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.borderMachined },
+  tabText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: Colors.bioGreen, fontWeight: '700' },
   closeBtn: {
     width: 32,
     height: 32,

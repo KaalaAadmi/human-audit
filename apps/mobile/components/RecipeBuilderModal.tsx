@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  StyleSheet, Text, View, Modal, Pressable, TextInput,
+  StyleSheet, Text, View, Pressable, TextInput,
   ScrollView, FlatList, ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,7 @@ import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { Spacing } from '../theme/spacing';
 import { GlassCard } from './GlassCard';
+import { Sheet } from './Sheet';
 import { NutritionService, SearchFoodResult } from '../services/nutritionService';
 
 export interface RecipeIngredient {
@@ -37,13 +38,35 @@ export interface CustomRecipe {
   mine?: boolean;
 }
 
-interface Props {
-  visible: boolean;
+interface BodyProps {
   onClose: () => void;
   onRecipeSaved: (recipe: CustomRecipe) => void;
 }
 
+interface Props extends BodyProps {
+  visible: boolean;
+}
+
+/** Fixed-height sheet (same as the diary search sheet) so the height never changes while results load. */
 export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
+  return (
+    <Sheet visible={visible} onClose={onClose} height={0.85}>
+      <View style={styles.header}>
+        <View>
+          <Text style={Typography.cardTitle}>Recipe Builder</Text>
+          <Text style={Typography.caption}>Search ingredients, set quantities</Text>
+        </View>
+        <Pressable onPress={onClose} style={styles.closeBtn}>
+          <Text style={{ color: Colors.textMuted, fontSize: 18 }}>✕</Text>
+        </Pressable>
+      </View>
+      <RecipeBuilder onClose={onClose} onRecipeSaved={onRecipeSaved} />
+    </Sheet>
+  );
+}
+
+/** The builder itself, without a sheet around it, so it can also live in a tab. */
+export function RecipeBuilder({ onClose, onRecipeSaved }: BodyProps) {
   const [recipeName, setRecipeName] = useState('');
   const [servingsCount, setServingsCount] = useState('4');
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
@@ -53,6 +76,7 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
   const [searchResults, setSearchResults] = useState<SearchFoodResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchNote, setSearchNote] = useState<string | null>(null);
+  const latestSearch = useRef(0); // a slow older response must not overwrite a newer one
 
   // Pending ingredient: selected food + quantity before confirming
   const [pendingIng, setPendingIng] = useState<SearchFoodResult | null>(null);
@@ -71,18 +95,21 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
 
   const handleSearch = async (text: string) => {
     setSearchQuery(text);
-    if (!text.trim()) { setSearchResults([]); return; }
+    const id = ++latestSearch.current;
+    if (!text.trim()) { setSearchResults([]); setIsSearching(false); return; }
     setIsSearching(true);
     setSearchNote(null);
     try {
       const { results, fallback } = await NutritionService.searchFoods(text);
+      if (id !== latestSearch.current) return;
       setSearchResults(results);
       if (fallback) setSearchNote('Showing USDA results (Open Food Facts had no match).');
     } catch (e) {
+      if (id !== latestSearch.current) return;
       setSearchResults([]);
       setSearchNote(`Search failed: ${(e as Error).message}`);
     } finally {
-      setIsSearching(false);
+      if (id === latestSearch.current) setIsSearching(false);
     }
   };
 
@@ -129,24 +156,14 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
     onClose();
   };
 
-  if (!visible) return null;
-
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={Typography.cardTitle}>Recipe Builder</Text>
-              <Text style={Typography.caption}>Search ingredients, set quantities</Text>
-            </View>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Text style={{ color: Colors.textMuted, fontSize: 18 }}>✕</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <>
+          {/* automaticallyAdjustKeyboardInsets scrolls the focused field (name / servings / quantity) above the keyboard */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
             {/* Recipe name + servings */}
             <Text style={[Typography.statLabel, { marginTop: Spacing.sm }]}>RECIPE NAME *</Text>
             <TextInput
@@ -260,8 +277,9 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
                     onChangeText={handleSearch}
                     returnKeyType="search"
                   />
+                  {isSearching && <ActivityIndicator size="small" color={Colors.bioGreen} />}
                   {searchQuery.length > 0 && (
-                    <Pressable onPress={() => { setSearchQuery(''); setSearchResults([]); }} hitSlop={8}>
+                    <Pressable onPress={() => handleSearch('')} hitSlop={8}>
                       <Text style={{ color: Colors.textMuted, fontSize: 13 }}>Clear</Text>
                     </Pressable>
                   )}
@@ -269,34 +287,32 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
                 {searchNote && (
                   <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: 4 }]}>{searchNote}</Text>
                 )}
-                {isSearching ? (
-                  <ActivityIndicator size="small" color={Colors.bioGreen} style={{ marginTop: Spacing.md }} />
-                ) : (
-                  <FlatList
-                    data={searchResults}
-                    keyExtractor={item => item.id}
-                    scrollEnabled={false}
-                    renderItem={({ item }) => (
-                      <Pressable
-                        style={styles.resultRow}
-                        onPress={() => { setPendingIng(item); setPendingServings('1'); Haptics.selectionAsync(); }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[Typography.bodyText, { fontWeight: '700' }]} numberOfLines={1}>{item.name}</Text>
-                          <Text style={Typography.caption}>
-                            {item.servingSize} • {item.brand || (item.source === 'usda' ? 'USDA' : 'OFF')}
-                          </Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={[Typography.bodyMono, { color: Colors.bioGreen, fontWeight: '700' }]}>
-                            {item.calories} kcal
-                          </Text>
-                          <Text style={Typography.caption}>P: {item.proteinG}g</Text>
-                        </View>
-                      </Pressable>
-                    )}
-                  />
-                )}
+                {/* Old results stay on screen while a new search loads (spinner is in the search row), so the list doesn't jump. */}
+                <FlatList
+                  data={searchResults}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <Pressable
+                      style={styles.resultRow}
+                      onPress={() => { setPendingIng(item); setPendingServings('1'); Haptics.selectionAsync(); }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.bodyText, { fontWeight: '700' }]} numberOfLines={1}>{item.name}</Text>
+                        <Text style={Typography.caption}>
+                          {item.servingSize} • {item.brand || (item.source === 'usda' ? 'USDA' : 'OFF')}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[Typography.bodyMono, { color: Colors.bioGreen, fontWeight: '700' }]}>
+                          {item.calories} kcal
+                        </Text>
+                        <Text style={Typography.caption}>P: {item.proteinG}g</Text>
+                      </View>
+                    </Pressable>
+                  )}
+                />
               </View>
             )}
 
@@ -328,24 +344,11 @@ export function RecipeBuilderModal({ visible, onClose, onRecipeSaved }: Props) {
               <Text style={styles.saveBtnText}>Save Recipe to Library</Text>
             </Pressable>
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  container: {
-    backgroundColor: Colors.canvas,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: Colors.borderMachined,
-    maxHeight: '92%',
-  },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
   input: {

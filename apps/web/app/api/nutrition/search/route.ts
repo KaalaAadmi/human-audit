@@ -52,13 +52,13 @@ async function searchOff(q: string): Promise<FoodItem[]> {
   const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`OFF search ${res.status}`);
   const data = await res.json();
-  return (data.hits ?? []).map(fromOff).filter((x: FoodItem | null): x is FoodItem => !!x).slice(0, 12);
+  return (data.hits ?? []).map(fromOff).filter((x: FoodItem | null): x is FoodItem => !!x).slice(0, 24);
 }
 
 // Fallback: USDA FoodData Central. Values are per 100 g.
 async function searchUsda(q: string): Promise<FoodItem[]> {
   const key = process.env.USDA_API_KEY || 'DEMO_KEY';
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}&query=${encodeURIComponent(q)}&dataType=Foundation,SR%20Legacy&pageSize=12`;
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}&query=${encodeURIComponent(q)}&dataType=Foundation,SR%20Legacy&pageSize=24`;
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`USDA ${res.status}`);
   const data = await res.json();

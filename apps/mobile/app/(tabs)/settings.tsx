@@ -749,6 +749,7 @@ export default function SettingsScreen() {
         visible={showAddFoodModal}
         onClose={() => setShowAddFoodModal(false)}
         onFoodCreated={food => SyncService.createCustomFood(food).then(saved => setCustomFoods(prev => [saved, ...prev])).catch(fail('Could not save food'))}
+        onRecipeSaved={r => SyncService.createCustomRecipe(r).then(saved => setCustomRecipes(prev => [saved, ...prev])).catch(fail('Could not save recipe'))}
       />
       <RecipeBuilderModal
         visible={showAddRecipeModal}

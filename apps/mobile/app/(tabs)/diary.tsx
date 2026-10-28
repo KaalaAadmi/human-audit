@@ -21,6 +21,7 @@ import { Spacing } from '../../theme/spacing';
 import { GlassCard } from '../../components/GlassCard';
 import { NutritionService, FoodLogItem, SearchFoodResult } from '../../services/nutritionService';
 import { SyncService } from '../../services/syncService';
+import type { CustomRecipe } from '../../components/RecipeBuilderModal';
 import { useToday } from '../../hooks/useToday';
 import { localDate } from '../../lib/api';
 import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
@@ -101,6 +102,8 @@ export default function DiaryScreen() {
   const [showCustomModal, setShowCustomModal] = useState(false);
 
   // Search State
+  const [searchTab, setSearchTab] = useState<'foods' | 'recipes'>('foods');
+  const [recipes, setRecipes] = useState<CustomRecipe[] | null>(null); // null = loading
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchFoodResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -182,6 +185,25 @@ export default function DiaryScreen() {
   };
 
   const closeSearch = () => { setShowSearchModal(false); setPendingFood(null); setPendingServings('1'); };
+
+  // Recipes are shared and fetched whole (small list); filtered locally by the search box.
+  useEffect(() => {
+    if (!showSearchModal) return;
+    SyncService.fetchCustomRecipes().then(setRecipes).catch(() => setRecipes([]));
+  }, [showSearchModal]);
+
+  const shownRecipes = (recipes ?? []).filter(r => r.name.toLowerCase().includes(searchQuery.trim().toLowerCase()));
+
+  // A recipe logs as one "serving" = 1/N of the whole recipe, so the existing serving picker and log path just work.
+  const pickRecipe = (r: CustomRecipe) => {
+    const totalGrams = r.ingredients.reduce((a, i) => a + i.grams, 0);
+    setPendingFood({
+      id: r.id, name: r.name, servingSize: '1 serving', servingGrams: totalGrams / r.servingsCount,
+      calories: r.perServingCalories, proteinG: r.perServingProteinG, carbsG: r.perServingCarbsG, fatG: r.perServingFatG,
+      source: 'custom',
+    });
+    setPendingServings('1');
+  };
 
   const handleAddMultipleFoods = (items: SearchFoodResult[]) => {
     items.forEach(item => handleAddFoodItem(item));
@@ -643,16 +665,34 @@ export default function DiaryScreen() {
             <View style={styles.searchHeader}>
               <TextInput
                 style={styles.searchBar}
-                placeholder="Search chicken breast, oats, avocado..."
+                placeholder={searchTab === 'recipes' ? 'Search your recipes...' : 'Search chicken breast, oats, avocado...'}
                 placeholderTextColor={Colors.textMuted}
                 autoFocus
                 value={searchQuery}
-                onChangeText={handleSearch}
+                onChangeText={t => (searchTab === 'recipes' ? setSearchQuery(t) : handleSearch(t))}
               />
               <Pressable onPress={closeSearch} style={styles.closeSearchBtn}>
                 <Text style={{ color: Colors.textMuted }}>Close</Text>
               </Pressable>
             </View>
+
+            {!pendingFood && (
+              <View style={styles.segmentRow}>
+                {(['foods', 'recipes'] as const).map(t => (
+                  <Pressable
+                    key={t}
+                    style={[styles.segment, searchTab === t && styles.segmentActive]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSearchTab(t);
+                      if (t === 'foods' && searchQuery.trim()) handleSearch(searchQuery); // recipes mode never hit the network
+                    }}
+                  >
+                    <Text style={[styles.segmentText, searchTab === t && { color: '#000' }]}>{t === 'foods' ? 'Foods' : 'Recipes'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
             {/* Serving-quantity step: shown after tapping a result */}
             {pendingFood ? (
@@ -708,6 +748,38 @@ export default function DiaryScreen() {
                   </Pressable>
                 </View>
               </View>
+            ) : searchTab === 'recipes' ? (
+              recipes === null ? (
+                <ActivityIndicator size="small" color={Colors.bioGreen} style={{ marginTop: Spacing.xl }} />
+              ) : (
+                <FlatList
+                  data={shownRecipes}
+                  keyExtractor={r => r.id}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <Pressable style={styles.searchResultRow} onPress={() => pickRecipe(item)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[Typography.bodyText, { fontWeight: '700' }]}>{item.name}</Text>
+                        <Text style={Typography.caption}>
+                          {item.mine ? 'Your recipe' : `by ${item.author ?? 'Unknown'}`} • {item.servingsCount} servings
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[Typography.bodyMono, { color: Colors.bioGreen, fontWeight: '700' }]}>
+                          {item.perServingCalories} kcal
+                        </Text>
+                        <Text style={Typography.caption}>P: {item.perServingProteinG}g</Text>
+                      </View>
+                    </Pressable>
+                  )}
+                  ListEmptyComponent={
+                    <Text style={[Typography.caption, { textAlign: 'center', marginTop: Spacing.xl }]}>
+                      {searchQuery ? `No recipes matching "${searchQuery}"` : 'No recipes yet. Create one in Settings → Nutrition Library.'}
+                    </Text>
+                  }
+                />
+              )
             ) : isSearching ? (
               <ActivityIndicator size="small" color={Colors.bioGreen} style={{ marginTop: Spacing.xl }} />
             ) : (
@@ -772,6 +844,9 @@ export default function DiaryScreen() {
           SyncService.createCustomFood(food).catch(e => Alert.alert('Could not save to your library', (e as Error).message));
           handleAddFoodItem(food);
         }}
+        onRecipeSaved={r => SyncService.createCustomRecipe(r)
+          .then(() => setRecipes(null)) // refetched when the Recipes segment next opens
+          .catch(e => Alert.alert('Could not save recipe', (e as Error).message))}
       />
 
       {/* Edit Food Item Modal (MFP style) */}
@@ -1131,6 +1206,13 @@ const styles = StyleSheet.create({
   closeSearchBtn: {
     padding: Spacing.sm,
   },
+  segmentRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
+  segment: {
+    paddingHorizontal: Spacing.lg, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.borderMachined,
+  },
+  segmentActive: { backgroundColor: Colors.bioGreen, borderColor: Colors.bioGreen },
+  segmentText: { color: Colors.textMuted, fontWeight: '600', fontSize: 13 },
   searchResultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import {
   StyleSheet,
@@ -9,8 +9,9 @@ import {
   Modal,
   FlatList,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
-import { ScrollView, Swipeable } from 'react-native-gesture-handler';
+import { Swipeable } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -181,9 +182,13 @@ export default function DiaryScreen() {
     setPendingFood(null);
     setPendingServings('1');
     setShowSearchModal(false);
-    setShowLogSheet(false);
+    // iOS: dismissing the nested search Modal and its parent in the same frame leaves an invisible layer that
+    // swallows every touch. Close the log sheet only after the search sheet has finished dismissing.
+    if (Platform.OS === 'ios') closeLogAfterSearch.current = true;
+    else setShowLogSheet(false);
   };
 
+  const closeLogAfterSearch = useRef(false);
   const closeSearch = () => { setShowSearchModal(false); setPendingFood(null); setPendingServings('1'); };
 
   // Recipes are shared and fetched whole (small list); filtered locally by the search box.
@@ -661,7 +666,13 @@ export default function DiaryScreen() {
             </Pressable>
 
       {/* Search sheet is nested in the log sheet: closing it reveals the log sheet again (nested Modals are the supported way to stack on iOS) */}
-      <Sheet visible={showSearchModal} onClose={closeSearch} height={0.85} dim={0.45}>
+      <Sheet
+        visible={showSearchModal}
+        onClose={closeSearch}
+        onDismiss={() => { if (closeLogAfterSearch.current) { closeLogAfterSearch.current = false; setShowLogSheet(false); } }}
+        height={0.85}
+        dim={0.45}
+      >
             <View style={styles.searchHeader}>
               <TextInput
                 style={styles.searchBar}

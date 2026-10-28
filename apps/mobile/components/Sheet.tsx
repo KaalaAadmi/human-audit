@@ -10,10 +10,11 @@ const PAD = 40;
  * Bottom sheet: tap the dimmed area to close; drag the handle to stretch (up), shrink or close (down).
  * The sheet is always laid out at its stretched size and only slides (translateY), so up and down drags are the same
  * motion and nothing relayouts while the finger moves.
+ * `onDismiss` (iOS only) fires once the close animation has finished.
  * `height` is the resting height as a fraction of the screen (0..1); omit it to fit the content. `dim` is the backdrop opacity.
  */
-export function Sheet({ visible, onClose, height, dim = 0.85, children }: {
-  visible: boolean; onClose: () => void; height?: number; dim?: number; children: React.ReactNode;
+export function Sheet({ visible, onClose, onDismiss, height, dim = 0.85, children }: {
+  visible: boolean; onClose: () => void; onDismiss?: () => void; height?: number; dim?: number; children: React.ReactNode;
 }) {
   const H = win();
   const full = H * 0.94;
@@ -51,7 +52,7 @@ export function Sheet({ visible, onClose, height, dim = 0.85, children }: {
   const close = () => { Keyboard.dismiss(); onClose(); };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={close} onDismiss={onDismiss}>
       <View style={[styles.overlay, { backgroundColor: `rgba(0,0,0,${dim})` }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         {/* Hidden until the resting position is known so a fit-to-content sheet never flashes stretched. */}

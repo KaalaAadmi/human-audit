@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 export const DEFAULT_REMINDER_START_MIN = 480;  // 8:00 AM
@@ -28,6 +29,10 @@ export function reminderSlots(startMin: number, endMin: number, intervalMins: nu
 export async function scheduleWaterReminders(enabled: boolean, startMin: number, endMin: number, intervalMins: number) {
   await Notifications.cancelAllScheduledNotificationsAsync();
   if (!enabled) return;
+  // Android 13+ only shows the permission prompt once a channel exists.
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', { name: 'Reminders', importance: Notifications.AndroidImportance.DEFAULT });
+  }
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') return;
   for (const m of reminderSlots(startMin, endMin, intervalMins)) {
